@@ -3,7 +3,7 @@
 'use strict';
 
 /**
- * Module dependencies.
+ * module dependencies.
  */
 
 const fs = require('fs');
@@ -27,14 +27,14 @@ var options = {
   SNICallback: function(domainname, cb) {
 
     // normally we would check the domainname choose the correct certificate,
-    // but for this demo we'll always use this one (the default) instead
+    // but for testing/dev we'll always use this one (the default) instead
     cb(null, require('tls').createSecureContext(options));
   },
   NPNProtcols: ['http/1.1']
 };
 
 /**
- * Normalize a port into a number, string, or false.
+ * normalize a port into a number, string, or false.
  */
 
 function normalizePort(val) {
@@ -56,7 +56,7 @@ function normalizePort(val) {
 var port = normalizePort(process.env.PORT || 3217);
 
 /**
- * Event listener for HTTPS server "error" event.
+ * 'error' event listener
  */
 
 function onError(error) {

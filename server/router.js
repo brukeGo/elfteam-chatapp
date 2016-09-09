@@ -13,6 +13,10 @@ function log(info) {
   console.log(`elfpm-server: ${info}`);
 }
 
+/**
+ * find user in db
+ */
+
 function find_user(username, cb) {
   var val;
   db.get(username, (err, record) => {
@@ -30,6 +34,10 @@ function find_user(username, cb) {
     }
   });
 }
+
+/**
+ * update user with key/value pair
+ */
 
 function update_user(username, key, val, cb) {
   find_user(username, (err, user) => {
@@ -52,7 +60,10 @@ function update_user(username, key, val, cb) {
   });
 }
 
-// create JWT
+/*
+ * create json web token for a given username
+ */
+
 function gen_jwt(username) {
 
   // by default, expire the token after 60 mins.
@@ -64,6 +75,11 @@ function gen_jwt(username) {
   }, jwtkey);
   return token;
 }
+
+/**
+ * generate a fresh json web token and store it 
+ * in db for the current session communication
+ */
 
 function gen_and_store_jwt(username, cb) {
   var tok = gen_jwt(username);
@@ -86,9 +102,18 @@ function verify_jwt(token) {
   return decoded;
 }
 
+/**
+ * Get homepage, in case if someone hits the
+ * server web root path, inform user to use the client application
+ */
+
 router.get('/', (req, res, next) => {
   res.end('elfpm server: please use the elfpm client application.');
 });
+
+/**
+ * handle POST request to register new user
+ */
 
 router.post('/register', (req, res, next) => {
   console.log(req.body);
@@ -118,6 +143,10 @@ router.post('/register', (req, res, next) => {
     res.json({err: 'invalid username/password'});
   }
 });
+
+/**
+ * handle POST request for logining a returning user
+ */
 
 router.post('/login', (req, res, next) => {
   console.log(req.body);

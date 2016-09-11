@@ -23,7 +23,6 @@ var options = {
   key: fs.readFileSync(path.join(__dirname, 'certs', 'privkey.pem')),
   cert: fs.readFileSync(path.join(__dirname, 'certs', 'fullchain.pem')),
   dhparam: fs.readFileSync(path.join(__dirname, 'certs', 'dh.pem')),
-  rejectUnauthorized: true,
   SNICallback: function(domainname, cb) {
 
     // normally we would check the domainname choose the correct certificate,

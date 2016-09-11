@@ -1,0 +1,34 @@
+{
+  "name": "elfpm",
+  "version": "0.0.1",
+  "description": "private end-to-end encrypted chat messenger",
+  "main": "app.js",
+  "scripts": {
+    "start": "./node_modules/.bin/electron ."
+  },
+  "keywords": [
+    "encrypted",
+    "message",
+    "chat",
+    "messenger"
+  ],
+  "author": "Mawni Maghsoudlou",
+  "license": "MIT",
+  "dependencies": {
+    "fs-extra": "^0.30.0",
+    "request": "^2.74.0",
+    "ursa": "^0.9.4"
+  },
+  "devDependencies": {
+    "chokidar": "^1.6.0",
+    "electron": "^1.3.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mawni/elfpm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mawni/elfpm/issues"
+  },
+  "homepage": "https://github.com/mawni/elfpm#readme"
+}

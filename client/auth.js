@@ -50,9 +50,7 @@ function gen_privkey() {
 }
 
 /**
- * generate self-signed public key. This is 
- * user's certificate ( self-signed public key)
- * in a pem encoded format.
+ * calculate public key from RSA key
  */
 
 function gen_pubkey(user) {
@@ -67,7 +65,7 @@ function gen_pubkey(user) {
 }
 
 /**
- * get private key in a pem formatted file
+ * get private key read in from a pem encoded file
  */
 
 function get_privkey() {
@@ -79,7 +77,7 @@ function get_privkey() {
 }
 
 /**
- * get public key from a pem formatted file
+ * get public key read in from a pem encoded file
  */
 
 function get_pubkey(user) {
@@ -234,8 +232,7 @@ function register(username, passw, cb) {
 }
 
 /**
- * sign password with user's private key before 
- * sending to server.
+ * sign password with user's private key before sending to server.
  *
  * @return base64 signature of the given password
  */

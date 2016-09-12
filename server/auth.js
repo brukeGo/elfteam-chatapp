@@ -97,7 +97,7 @@ function verify_jwt(token) {
  */
 
 function validate_token(username, token, cb) {
-  var decoded, saved;
+  var decoded;
 
   decoded = verify_jwt(token);
   if (!decoded || !decoded.nam) {    
@@ -111,7 +111,6 @@ function validate_token(username, token, cb) {
 
       // check if user's stored token matches the sent one from client
       // and also username matches token's payload name
-      saved = verify_jwt(user.token);
       return cb(null, username === decoded.nam && user.token === token);
     });
   }
@@ -207,7 +206,7 @@ function login(username, passw, passw_sig, cb) {
 
       if (valid) {
         log(`${username} logged in successfully`);
-        tok = gen_jwt(username, 'auth');
+        tok = gen_jwt(username);
         update_user(username, {'token': tok}, (err) => {
           if (err) {
             log(err);

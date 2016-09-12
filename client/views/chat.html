@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>elfpm - authenticated</title>
+    <link rel="stylesheet" href="../resources/css/bootstrap.min.css">
+    <link rel="stylesheet" href="../resources/css/style-chat.css">
+    <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css" rel="stylesheet">
+  </head>
+  <body>
+    <div class="container">
+
+      <!-- ========== friend list ========== -->
+
+      <div id="friend-ls" class="col-md-4 bg-white ">
+        <div class="ls-pan-head">
+          <div class="panel-footer">
+            <div class="row">
+              <div class="col-xs-9">
+                <input id="username-inp" type="text" placeholder="Enter your friend's username..." class="form-control chat-input" />
+              </div>
+              <div class="col-xs-3">
+                <button id="add-btn" class="btn btn-primary btn-block" type="submit">Add friend</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <hr style="margin-right: 10px;">
+
+
+      </div>
+
+
+      <div id="chat-pan" class="col-md-12 col-lg-8">
+        <div class="panel">
+          <!--Heading-->
+          <div class="panel-heading">
+            <div class="panel-control">
+
+              <button id="logout-btn" type="button" class="btn btn-default">Log out</button>
+
+            </div>
+            <h3 class="panel-title">Chat</h3>
+          </div>
+
+
+        </div>
+      </div>
+    </div>
+
+    <script>require('./handler/chat.js')</script>
+  </body>
+</html>

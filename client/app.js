@@ -42,6 +42,19 @@ function showerr(err) {
 }
 
 /**
+ * show info message
+ */
+
+function showinfo(info) {
+  dialog.showMessageBox({
+    type: 'info',
+    title: 'elfpm',
+    message: `\n${info}`,
+    buttons: ['ok']
+  });
+}
+
+/**
  * create windows
  */
 
@@ -85,8 +98,8 @@ function create_win() {
 
   // chat window, authenticated route
   chat_win = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1200,
+    height: 700,
     'min-width': 400,
     'min-height': 200,
     icon: iconpath,
@@ -138,7 +151,8 @@ app.on('activate', () => {
  * reload register window on error
  */
 
-ipcMain.on('reg-err', () => {
+ipcMain.on('reg-err', (event, err) => {
+  showerr(err);
   reg_win.reload();
 });
 
@@ -146,7 +160,8 @@ ipcMain.on('reg-err', () => {
  * reload login window on error
  */
 
-ipcMain.on('login-err', () => {
+ipcMain.on('login-err', (event, err) => {
+  showerr(err);
   login_win.reload();
 });
 
@@ -154,7 +169,8 @@ ipcMain.on('login-err', () => {
  * reload chat window on I/O error
  */
 
-ipcMain.on('chat-err', () => {
+ipcMain.on('chat-err', (event, err) => {
+  showerr(err);
   chat_win.reload();
 });
 
@@ -178,12 +194,7 @@ ipcMain.on('request-reg', (event, dat) => {
         showerr(err);
         reg_win.reload();
       } else {
-        dialog.showMessageBox({
-          type: 'info',
-          title: 'elfpm',
-          message: '\nYour account created successfully. You can login now',
-          buttons: ['ok']
-        });
+        showinfo('Your keys and account created successfully. You can login now');
         if (reg_win !== null) {
           reg_win.close();
         }
@@ -215,6 +226,23 @@ ipcMain.on('request-login', (event, dat) => {
     });
   } else {
     showerr('username/password not valid');
+  }
+});
+
+/**
+ * request to add new friend event
+ */
+
+ipcMain.on('req-add-frd', (event, dat) => {
+  if (dat.frd_usern) {
+    auth.add_frd(dat.frd_usern, (err) => {
+      if (err) {
+        showerr(err);
+        chat_win.reload();
+      } else {  
+        showinfo('New friend added successfully');
+      }
+    });
   }
 });
 

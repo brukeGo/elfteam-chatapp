@@ -6,14 +6,35 @@ const crypto = require('crypto');
 const fs = require('fs-extra');
 const exec = require('child_process').execSync;
 const request = require('request');
-const config = path.join(os.homedir(), '.elfpm', 'config');
-const privkey = path.join(config, 'priv.pem');
-const token_path = path.join(config, '.token');
+const conf_path = path.join(os.homedir(), '.elfpm');
+const conf = path.join(conf_path, 'conf.json');
+const keys = path.join(conf_path, 'keys');
+const privkey = path.join(keys, 'priv.pem');
 const uri = {
   reg: 'https://localhost.daplie.com:3217/register',
-  reg_pubk: 'https://localhost.daplie.com:3217/register/pubk',
-  login: 'https://localhost.daplie.com:3217/login'
+  reg_pubk: 'https://localhost.daplie.com:3217/register/auth_pubk',
+  login: 'https://localhost.daplie.com:3217/login',
+  add_frd: 'https://localhost.daplie.com:3217/auth/add_frd'
 };
+
+/**
+ * update config file with given object
+ */
+
+function update_conf(obj, cb) {
+  fs.readJson(conf, (err, f) => {
+    if (err) {
+      return cb(err.message);
+    }
+    f = Object.assign(f, obj);
+    fs.writeJson(conf, f, (err) => {
+      if (err) {
+        return cb(err.message);
+      }
+      return cb();
+    });
+  });
+}
 
 /**
  * generate fresh keypair by executing openssl commands
@@ -35,7 +56,7 @@ function gen_privkey() {
  */
 
 function gen_pubkey(user) {
-  var pubkey_path = path.join(config, `${user}-key.pem`);
+  var pubkey_path = path.join(keys, `${user}-key.pem`);
 
   try {
     exec(`openssl rsa -in ${privkey} -out ${pubkey_path} -outform PEM -pubout`, {stdio: [0, 'pipe']});
@@ -63,7 +84,7 @@ function get_privkey() {
 
 function get_pubkey(user) {
   try {
-    return fs.readFileSync(path.join(config, `${user}-key.pem`));
+    return fs.readFileSync(path.join(keys, `${user}-key.pem`));
   } catch(err) {
     throw err.toString();
   }
@@ -86,14 +107,25 @@ function encode_pubkey(user) {
  * authenticated requests
  */
 
-function save_token(token, cb) {
-  fs.outputFile(token_path, token, (err) => {
+function save_token(tok, cb) {
+  update_conf({token: tok}, (err) => {
     if (err) {
-      return cb(err.message);
+      return cb(err);
     }
-    console.log('token saved sucessfully.');
     return cb();
   });
+}
+
+/**
+ * return locally saved token
+ */
+
+function get_token() {
+  try {
+    return fs.readJsonSync(conf).token;
+  } catch(err) {
+    throw err.message;
+  }
 }
 
 /**
@@ -101,9 +133,9 @@ function save_token(token, cb) {
  */
 
 function destroy_token(cb) {
-  fs.remove(token_path, (err) => {
+  update_conf({token: null}, (err) => {
     if (err) {
-      return cb(err.message);
+      return cb(err);
     }
     return cb();
   });
@@ -142,6 +174,18 @@ function send_pubkey(username, token, cb) {
 }
 
 /**
+ * get username
+ */
+
+function get_username() {
+  try {
+    return fs.readJsonSync(conf).username;
+  } catch(err) {
+    throw err.message;
+  }
+}
+
+/**
  * make a post request to /register endpoint
  */
 
@@ -169,7 +213,8 @@ function register(username, passw, cb) {
     if (server_res.token) {
       tok = server_res.token;  
       try {
-        fs.mkdirpSync(config);
+        fs.mkdirpSync(keys);
+        fs.outputJsonSync(conf, {username: username});
         gen_privkey();
         gen_pubkey(username);
         send_pubkey(username, tok, (err) => {
@@ -230,7 +275,6 @@ function login(usern, passw, cb) {
     // successful authentication, server responded with a token
     // save it locally for the current session subsequent requests
     if (server_res.token) {
-      console.log(server_res);
       save_token(server_res.token, (err) => {
         if (err) {
           return cb(err);
@@ -243,9 +287,83 @@ function login(usern, passw, cb) {
   });
 }
 
+/**
+ * add new friend's public key to the list of pubkeys
+ */
+
+function save_frd_pubkey(frd_username, pubkey, cb) {
+  fs.readJson(conf, (err, f) => {
+    if (err) {
+      return cb(err);
+    }
+    if (f.pubkeys) {
+      f.pubkeys = Object.assign(f.pubkeys, {[frd_username]: pubkey});
+      fs.writeJson(conf, f, (err) => {
+        if (err) {
+          return cb(err);
+        }
+        return cb();
+      });
+    }
+  });
+}
+
+/**
+ * make a request to /auth/add_frd to add new friend.
+ * it is a protected route. client needs to send the
+ * returning token in the headers authorization
+ */
+
+function add_frd(frd_username, cb) {
+  var server_res = {};
+  var token, username;
+
+  try {
+    token = get_token();
+    username = get_username();
+  } catch(err) {
+    return cb(err);
+  }
+
+  request.post({
+    url: uri.add_frd,
+    headers: {"authorization": token},
+    rejectUnauthorized: true,
+    form: {un: username, frd_un: frd_username}
+  }, (error, res, body) => {
+    if (error) {
+      console.log(`request-err: ${error}`);
+      return cb(error.message, null);
+    }
+    try {
+      server_res = JSON.parse(body);
+    } catch(err) {
+      return cb(err.message);
+    }
+    if (server_res.err) {
+      return cb(server_res.err, null);
+    }
+
+    // successfully added new friend, server responded with
+    // the friend's public key, save it locally
+    if (server_res.pubkey) {
+      save_frd_pubkey(frd_username, server_res.pubkey, (err) => {
+        if (err) {
+          return cb(err);
+        }
+        return cb();
+      });
+    } else {
+      return cb('err: no authorization token');
+    }
+  });
+
+}
+
 module.exports = {
   register: register,
   login: login,
-  destroy_token: destroy_token
+  destroy_token: destroy_token,
+  add_frd: add_frd
 };
 

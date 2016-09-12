@@ -4,12 +4,11 @@
 
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const levelup = require('levelup');
 const crypto = require('crypto');
-const jwtkey = process.env.JWT_SECRET || fs.readFileSync(path.join(__dirname, 'certs', 'jwt-key.pem'));
+const jwtkey = process.env.JWT_SECRET = crypto.randomBytes(256).toString('base64');
 var db = levelup(path.join(__dirname, 'db'));
 
 function log(info) {
@@ -37,7 +36,7 @@ function find_user(username, cb) {
 }
 
 /**
- * update user with given key/value item
+ * update user with given key/value item (get/put)
  */
 
 function update_user(username, item, cb) {
@@ -51,7 +50,6 @@ function update_user(username, item, cb) {
         if (err) {
           return cb(err.message);
         } else {
-          console.log('\nupdated-user:\n', user);
           return cb();
         }
       });
@@ -62,19 +60,17 @@ function update_user(username, item, cb) {
 }
 
 /*
- * create json web token for a given usernam
- * and type which is register or login then
+ * create json web token for a given username,
  * sign it with server's jwtkey and return
  * the generated token.
  */
 
-function gen_jwt(username, type) {
+function gen_jwt(username) {
 
   // by default, expire the token after 24 hours (time is in secs)
   const expire_def = Math.floor(new Date().getTime()/1000) + 60*1440;
   return jwt.sign({
     nam: username,
-    typ: type,
     iat: new Date().getTime(),
     exp: expire_def
   }, jwtkey);
@@ -89,7 +85,7 @@ function gen_jwt(username, type) {
 function verify_jwt(token) {
   var decoded = false;
   try {
-    decoded = jwt.verify(token, jwtkey);
+    decoded = jwt.verify(token, jwtkey, {algorithms: ['HS256']});
   } catch(err) {
     decoded = false; // still false
   }
@@ -98,16 +94,13 @@ function verify_jwt(token) {
 
 /**
  * validate json web token for a given username
- * and token type ('reg' or 'login')
  */
 
-function validate_token(username, token, type, cb) {
-  var decoded;
+function validate_token(username, token, cb) {
+  var decoded, saved;
 
-  // verify register jwt
   decoded = verify_jwt(token);
-  if (!decoded || !decoded.nam || !decoded.typ) {    
-    log('reg-token not valid');
+  if (!decoded || !decoded.nam) {    
     return cb('token not valid', false);
   } else {
     find_user(username, (err, user) => {
@@ -118,8 +111,8 @@ function validate_token(username, token, type, cb) {
 
       // check if user's stored token matches the sent one from client
       // and also username matches token's payload name
-      return cb(null, username === decoded.nam && 
-        user.token === token && decoded.typ === type);
+      saved = verify_jwt(user.token);
+      return cb(null, username === decoded.nam && user.token === token);
     });
   }
 }
@@ -137,12 +130,11 @@ function register(username, passw, cb) {
   // make sure username is unique
   find_user(username, (err) => {
     if (err) {
-      log(err);
 
       // username is unique, generate jwt for register
       // authentication and save it to db
 
-      tok = gen_jwt(username, 'reg');
+      tok = gen_jwt(username);
       db.put(username, JSON.stringify({
         "password": passw,
         "token": tok
@@ -151,23 +143,22 @@ function register(username, passw, cb) {
           log(err.message);
           return cb(err.message, null);
         }
-        log(`${username} saved to db successfully.`);
+        log(`${username} saved successfully`);
         return cb(null, tok);
       });
     } else {
-      log(`${username} already taken.`);
       return cb(`'${username}' already taken. Please choose another one`, null);
     }
   });
 }
 
 /**
- * verify register jwt and store user's public key in db
+ * validate register jwt and store user's public key in db
  */
 
 function save_pubkey(username, token, pubkey, cb) {
 
-  validate_token(username, token, 'reg', (err, valid) => {
+  validate_token(username, token, (err, valid) => {
     if (err) {
       return cb(err);
     }
@@ -178,39 +169,45 @@ function save_pubkey(username, token, pubkey, cb) {
           return cb(err);
         }
 
-        log(`\nreg_token deleted successfully for ${username} and user pubkey saved to db successfully`);
+        log(`reg-token deleted successfully for ${username} and pubkey saved successfully`);
         return cb();
       });
     } else {
-      log('username/token not valid');
       return cb('username/token not valid');
     }
   });
 }
 
 /**
- * authenticate a returning user
+ * authenticate a returning user (login api route)
  */
 
 function login(username, passw, passw_sig, cb) {
 
   const verify = crypto.createVerify('RSA-SHA256');
-  var tok;
+  var tok, valid;
 
   find_user(username, (error, user) => {
     if (error) {
       log(error);
       return cb(error, null);
-    } else {
-      verify.write(passw);
-      verify.end();
+    }
+    if (user.password === passw && user.pubkey) {
+      try {
+        verify.write(passw);
+        verify.end();
 
-      // verify password and its signature, if successful
-      // generate jwt, save it to db and send it to client
+        // verify password and its signature, if successful
+        // generate jwt, save it to db and send it to client
 
-      if (verify.verify(new Buffer(user.pubkey, 'base64').toString(), passw_sig, 'base64') && user.password === passw) {
+        valid = verify.verify(new Buffer(user.pubkey, 'base64').toString(), passw_sig, 'base64');
+      } catch(err) {
+        return cb(err.toString());
+      }
+
+      if (valid) {
         log(`${username} logged in successfully`);
-        tok = gen_jwt(username, 'login');
+        tok = gen_jwt(username, 'auth');
         update_user(username, {'token': tok}, (err) => {
           if (err) {
             log(err);
@@ -219,15 +216,54 @@ function login(username, passw, passw_sig, cb) {
           return cb(null, tok);
         });
       } else {
-        log('err: passw/sig not valid');
         return cb('err: password/signature not valid', null);
       }
+    } else {  
+      return cb('err: password/signature not valid', null);
     }
   });
+}
+
+/**
+ * add new friend to user's friend list, if successful
+ * send friend's public key to the client
+ */
+
+function add_frd(usern, frd_usern, tok, cb) {
+  validate_token(usern, tok, (err, valid) => {
+    if (err) {
+      return cb(err, null);
+    }
+    if (valid) {
+      find_user(usern, (err, user) => {
+        if (err) {
+          return cb(err, null);
+        }
+        if (user && user.pubkey) {
+          find_user(frd_usern, (err, frd) => {
+            if (err) {
+              return cb(err, null);
+            }
+            if (frd && frd.pubkey) {
+              log(`friend ${frd_usern} found successfully`);
+              return cb(null, frd.pubkey);
+            } else {
+              return cb(`${frd_usern} not found`, null);
+            }
+          });
+        } else {
+          return cb(`${usern} not found`);
+        }
+      });
+    } else {
+      return cb('username/token not valid');
+    }
+  }); 
 }
 
 module.exports = {
   register: register,
   save_pubkey: save_pubkey,
-  login: login
+  login: login,
+  add_frd: add_frd
 };

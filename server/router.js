@@ -26,13 +26,11 @@ router.get('/', (req, res, next) => {
  */
 
 router.post('/register', (req, res, next) => {
-  console.log('\nreg-body:', req.body);
   var username = req.body.un;
   var passw = req.body.pw;
   if (username && passw) {
     auth.register(username, passw, (err, tok) => {
       if (err) {
-        log(err);
         res.json({err: err});
       }
 
@@ -43,18 +41,18 @@ router.post('/register', (req, res, next) => {
       }
     });
   } else {
-    log('invalid username and/or pass');
     res.json({err: 'invalid username/password'});
   }
 });
 
 /**
  * handle POST request to /register/pubk endpoint
- * to get new user's public key and save it to db
+ * to get new user's public key and save it to db.
+ * This is a protected route. it verifies token in
+ * http headers authorization.
  */
 
-router.post('/register/pubk', (req, res, next) => {
-  console.log('\nreg-pubk-body:', req.body);
+router.post('/register/auth_pubk', (req, res, next) => {
   var tok = req.headers.authorization;
   var username = req.body.un;
   var pubkey = req.body.pubkey;
@@ -74,11 +72,10 @@ router.post('/register/pubk', (req, res, next) => {
 });
 
 /**
- * handle POST request for logining a returning user
+ * handle POST request to /login endpoint
  */
 
 router.post('/login', (req, res, next) => {
-  console.log('\nlogin-request-body:', req.body);
   var usern = req.body.un;
   var passw = req.body.pw;
   var passw_sig = req.body.pw_sig;
@@ -88,6 +85,27 @@ router.post('/login', (req, res, next) => {
     }
     if (tok) {
       res.json({token: tok});
+    }
+  });
+});
+
+/**
+ * handle POST request to /auth/add_frd endpoint
+ * to add new friend to user's friend list. It is
+ * an authenticated route.
+ */
+
+router.post('/auth/add_frd', (req, res, next) => {
+
+  var tok = req.headers.authorization;
+  var usern = req.body.un;
+  var frd_usern = req.body.frd_un;
+  auth.add_frd(usern, frd_usern, tok, (err, frd_pubkey) => {
+    if (err) {
+      res.json({err: err});
+    }
+    if (frd_pubkey) {
+      res.json({pubkey: frd_pubkey});
     }
   });
 });

@@ -8,10 +8,12 @@
 
 const fs = require('fs');
 const path = require('path');
+const tls = require('tls');
 const http = require('http');
 const https = require('https');
 const express = require('express');
 const bodyParser = require('body-parser');
+const hsts = require('hsts');
 const router = require('./router');
 var app = express();
 
@@ -19,15 +21,15 @@ var app = express();
  * tls options
  */
 
-var options = {
+const options = {
   key: fs.readFileSync(path.join(__dirname, 'certs', 'privkey.pem')),
   cert: fs.readFileSync(path.join(__dirname, 'certs', 'fullchain.pem')),
   dhparam: fs.readFileSync(path.join(__dirname, 'certs', 'dh.pem')),
   SNICallback: function(domainname, cb) {
 
-    // normally we would check the domainname choose the correct certificate,
-    // but for testing/dev we'll always use this one (the default) instead
-    cb(null, require('tls').createSecureContext(options));
+    // normally check the domainname choose the correct certificate,
+    // but for testing/dev always use this one (the default) instead
+    cb(null, tls.createSecureContext(options));
   },
   NPNProtcols: ['http/1.1']
 };
@@ -112,9 +114,17 @@ server.listen(port, () => {
 server.on('error', onError);
 
 /**
- * handle api routes
+ * app middlewares
  */
 
+// http strict transport security.
+// force browser to use https for
+// next 90 days
+app.use(hsts({
+  maxAge: 7776000000,
+  includeSubDomains: true,
+  force: true
+}));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use('/', router);

@@ -247,7 +247,7 @@ ipcMain.on('req-add-frd', (event, dat) => {
 });
 
 /**
- * if something unexpected happens, reload the login page.
+ * if something unexpected happens, show the error
  */
 
 process.on('uncaughtException', (err) => {

@@ -54,7 +54,7 @@ function normalizePort(val) {
   return false;
 }
 
-var port = normalizePort(process.env.PORT || 3217);
+var port = normalizePort(process.env.PORT || 3019);
 
 /**
  * 'error' event listener
@@ -114,8 +114,11 @@ server.listen(port, () => {
 server.on('error', onError);
 
 /**
- * app middlewares
+ * app view engine and middlewares
  */
+
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'ejs');
 
 // http strict transport security.
 // force browser to use https for

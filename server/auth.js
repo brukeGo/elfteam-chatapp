@@ -155,20 +155,21 @@ function register(username, passw, cb) {
  * validate register jwt and store user's public key in db
  */
 
-function save_pubkey(username, token, pubkey, cb) {
+function save_pubkey(username, token, pubkey, sig, cb) {
 
+  // validate the token received from client
   validate_token(username, token, (err, valid) => {
     if (err) {
       return cb(err);
     }
+    // if jwt is valid, delete register token (for login we generate new token),
+    // then save user's public key and its signature to db
     if (valid) {
-      update_user(username, {"token": null, "pubkey": pubkey}, (err) => {    
+      update_user(username, {'token': null, 'pubkey': pubkey, 'sig': sig}, (err) => {    
         if (err) {
           log(err);
           return cb(err);
         }
-
-        log(`reg-token deleted successfully for ${username} and pubkey saved successfully`);
         return cb();
       });
     } else {
@@ -224,45 +225,29 @@ function login(username, passw, passw_sig, cb) {
 }
 
 /**
- * add new friend to user's friend list, if successful
- * send friend's public key to the client
+ * search for a given username and return public key
+ * and its signature if found, otherwise return not found err
  */
 
-function add_frd(usern, frd_usern, tok, cb) {
-  validate_token(usern, tok, (err, valid) => {
+function search(username, cb) {
+  find_user(username, (err, user) => {
     if (err) {
-      return cb(err, null);
+      return cb(err);
     }
-    if (valid) {
-      find_user(usern, (err, user) => {
-        if (err) {
-          return cb(err, null);
-        }
-        if (user && user.pubkey) {
-          find_user(frd_usern, (err, frd) => {
-            if (err) {
-              return cb(err, null);
-            }
-            if (frd && frd.pubkey) {
-              log(`friend ${frd_usern} found successfully`);
-              return cb(null, frd.pubkey);
-            } else {
-              return cb(`${frd_usern} not found`, null);
-            }
-          });
-        } else {
-          return cb(`${usern} not found`);
-        }
+    if (user.pubkey && user.sig) {
+      return cb(null, {
+        pubkey: user.pubkey,
+        sig: user.sig
       });
     } else {
-      return cb('username/token not valid');
+      return cb(`'${username} not found.'`);
     }
-  }); 
+  });
 }
 
 module.exports = {
   register: register,
   save_pubkey: save_pubkey,
   login: login,
-  add_frd: add_frd
+  search: search
 };

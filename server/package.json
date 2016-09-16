@@ -22,6 +22,7 @@
   "homepage": "https://github.com/mawni/elfpm#readme",
   "dependencies": {
     "body-parser": "^1.15.2",
+    "ejs": "^2.5.2",
     "express": "^4.14.0",
     "hsts": "^1.0.0",
     "jsonwebtoken": "^7.1.9",

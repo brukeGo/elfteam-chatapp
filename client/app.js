@@ -17,6 +17,7 @@ const auth = require('./auth.js');
 const reg_index = `file://${__dirname}/views/register.html`;
 const login_index = `file://${__dirname}/views/login.html`;
 const chat_index = `file://${__dirname}/views/chat.html`;
+const addfrd_index = `file://${__dirname}/views/addfrd.html`;
 
 /**
  * keep the reference to the main window.
@@ -27,6 +28,7 @@ const chat_index = `file://${__dirname}/views/chat.html`;
 var reg_win = null;
 var login_win = null;
 var chat_win = null;
+var addfrd_win = null;
 
 /**
  * show error message
@@ -89,26 +91,42 @@ function create_win() {
     icon: iconpath,
     show: false
   });
-
   reg_win.loadURL(reg_index);
   reg_win.webContents.openDevTools();
   reg_win.on('closed', () => {
     reg_win = null;
   });
 
+  // add friend window
+  addfrd_win = new BrowserWindow({
+    width: 700,
+    height: 500,
+    'min-width': 400,
+    'min-height': 200,
+    icon: iconpath,
+    show: false
+  });
+  addfrd_win.loadURL(addfrd_index);
+  addfrd_win.webContents.openDevTools();
+  addfrd_win.on('closed', () => {
+    addfrd_win = null;
+  });
+
   // chat window, authenticated route
   chat_win = new BrowserWindow({
-    width: 1200,
+    width: 1000,
     height: 700,
     'min-width': 400,
     'min-height': 200,
     icon: iconpath,
     show: false
   });
-
   chat_win.loadURL(chat_index);
   chat_win.webContents.openDevTools();
   chat_win.on('closed', () => {
+    if (addfrd_win !== null) {
+      addfrd_win.close();
+    }
     auth.destroy_token((err) => {
       if (err) {
         console.log('destroy-tok-err: ', err);
@@ -117,19 +135,10 @@ function create_win() {
       chat_win = null;
       app.quit();
     });
-  });
+  });  
 }
 
 app.on('ready', create_win);
-
-app.on('before-quit', () => {  
-  auth.destroy_token((err) => {
-    if (err) {
-      console.log('before-quit-err: ', err);
-      showerr(err);
-    }
-  });
-});
 
 /**
  * when all windows are closed, quit the app
@@ -229,20 +238,54 @@ ipcMain.on('request-login', (event, dat) => {
   }
 });
 
+ipcMain.on('load-addfrd', () => {
+  addfrd_win.show();
+});
+
 /**
- * request to add new friend event
+ * add new friend event
  */
 
-ipcMain.on('req-add-frd', (event, dat) => {
-  if (dat.frd_usern) {
-    auth.add_frd(dat.frd_usern, (err) => {
-      if (err) {
-        showerr(err);
-        chat_win.reload();
-      } else {  
-        showinfo('New friend added successfully');
-      }
-    });
+ipcMain.on('add-frd', (ev, dat) => {
+  if (dat.frd_usern && dat.frd_pubkey && dat.frd_sig) {  
+    if (!auth.verify_pubkey(dat.frd_pubkey, dat.frd_sig)) {
+      showerr('Public key/signature not verified');
+      addfrd_win.reload();
+    } else {
+      auth.save_frd_pubkey(dat.frd_usern, dat.frd_pubkey, (err) => {
+        if (err) {
+          showerr(err);
+          addfrd_win.reload();
+        } else {
+          showinfo('Public key verified and added successfully');
+          if (addfrd_win !== null) {
+            addfrd_win.hide();
+          }
+          ev.sender.send('add-frd-success');
+          chat_win.reload();
+        }
+      });
+    }
+  }
+});
+
+/**
+ * send friend list to ipc renderer event
+ */
+
+ipcMain.on('frd-ls', (ev, arg) => {
+  var frds;
+  try {
+    frds = auth.get_frds();
+  } catch(err) {
+    showerr(err);
+    if (chat_win !== null) {
+      chat_win.reload();
+    }
+  }
+
+  if (frds && frds.length > 0) {
+    ev.sender.send('frd-ls-success', frds);
   }
 });
 

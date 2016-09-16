@@ -4,7 +4,8 @@ const electron = require('electron');
 const ipc = electron.ipcRenderer;
 
 const add_btn = document.getElementById('add-btn');
-const frd_username = document.getElementById('username-inp');
+const frd_ls = document.getElementById('frd-ls');
+const receiver = document.getElementById('receiver');
 
 /**
  * add friend button click listener
@@ -12,11 +13,29 @@ const frd_username = document.getElementById('username-inp');
 
 add_btn.addEventListener('click', (event) => { 
   event.preventDefault();
+  ipc.send('load-addfrd');
+});
 
-  if (frd_username.value !== null && frd_username.value !== '') {
+function append_frd_list(frd) {
+  var frd_btn = document.createElement('button');
+  frd_btn.className += 'list-group-item list-group-item-info';
+  frd_btn.style['text-align'] = 'center';
+  frd_btn.appendChild(document.createTextNode(frd));
+  frd_btn.value = frd;
+  frd_btn.addEventListener('click', (event) => {
+    event.preventDefault();
+    receiver.value = frd_btn.value;
+  }); 
+  frd_ls.appendChild(frd_btn);
+  return;
+}
 
-    ipc.send('req-add-frd', {frd_usern: frd_username.value});
-  } else {
-    ipc.send('chat-err', 'username/password cannot be null');
+ipc.send('frd-ls');
+ipc.on('frd-ls-success', (ev, frds) => {
+  if (frds) {
+    frds.forEach((frd) => {
+      append_frd_list(frd);
+    });
   }
 });
+

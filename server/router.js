@@ -18,7 +18,35 @@ function log(info) {
  */
 
 router.get('/', (req, res, next) => {
-  res.end('elfpm server: please use the elfpm client application.');
+  res.redirect('/search');
+});
+
+router.get('/search', (req, res, next) => {
+  res.render('search', {err: null});
+});
+
+/**
+ * handle search username to send public key and its signature
+ */
+
+router.post('/search', (req, res, next) => {
+  var username = req.body.username;
+  if (username) {
+    auth.search(username, (err, user) => {
+      if (err) {
+        res.render('search', {err: `'${username}' not found.`});
+      }
+      if (user) {
+        res.json({
+          username: username,
+          public_key: user.pubkey,
+          public_key_signature: user.sig
+        });
+      }
+    });
+  } else {
+    res.render('search', {err: `'${username}' not found.`});
+  }
 });
 
 /**
@@ -48,17 +76,18 @@ router.post('/register', (req, res, next) => {
 /**
  * handle POST request to /register/pubk endpoint
  * to get new user's public key and save it to db.
- * This is a protected route. it verifies token in
- * http headers authorization.
+ * This is a protected route. it verifies token received
+ * from the client in the http headers authorization.
  */
 
 router.post('/register/auth_pubk', (req, res, next) => {
   var tok = req.headers.authorization;
   var username = req.body.un;
   var pubkey = req.body.pubkey;
+  var sig = req.body.sig;
 
-  if (tok && username && pubkey) {
-    auth.save_pubkey(username, tok, pubkey, (err) => {
+  if (tok && username && pubkey && sig) {
+    auth.save_pubkey(username, tok, pubkey, sig, (err) => {
       if (err) {
         log(err);
         res.json({err: err});
@@ -85,27 +114,6 @@ router.post('/login', (req, res, next) => {
     }
     if (tok) {
       res.json({token: tok});
-    }
-  });
-});
-
-/**
- * handle POST request to /auth/add_frd endpoint
- * to add new friend to user's friend list. It is
- * an authenticated route.
- */
-
-router.post('/auth/add_frd', (req, res, next) => {
-
-  var tok = req.headers.authorization;
-  var usern = req.body.un;
-  var frd_usern = req.body.frd_un;
-  auth.add_frd(usern, frd_usern, tok, (err, frd_pubkey) => {
-    if (err) {
-      res.json({err: err});
-    }
-    if (frd_pubkey) {
-      res.json({pubkey: frd_pubkey});
     }
   });
 });

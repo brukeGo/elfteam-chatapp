@@ -13,8 +13,8 @@ function log(info) {
 }
 
 /**
- * Get homepage, in case if someone hits the
- * server web root path, inform user to use the client application
+ * Get homepage, in case someone hits the homepage
+ * redirect to /search endpoint
  */
 
 router.get('/', (req, res, next) => {
@@ -26,7 +26,7 @@ router.get('/search', (req, res, next) => {
 });
 
 /**
- * handle search username to send public key and its signature
+ * search username to send public key and its signature
  */
 
 router.post('/search', (req, res, next) => {

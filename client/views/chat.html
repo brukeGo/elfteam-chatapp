@@ -27,59 +27,11 @@
             <div class="col-xs-5"><input id="receiver" type="text" placeholder="Receiver.." class="form-control chat-input" /></div>
             <div><button id="logout-btn" type="button" class="btn btn-default">Log out</button></div>
           </div>
-          <!--Widget body-->
+          <!--chat body-->
           <div id="chat-body" class="chat-bg">
             <div class="nano has-scrollbar" style="height:400px">
               <div class="nano-content pad-all" tabindex="0" style="right: -17px;">
-                <ul class="list-unstyled media-block">
-
-                  <li class="mar-btm">
-                    <div class="media-left">
-                      <h4><span class="label label-info">Bob</span></h4>
-                    </div>
-                    <div class="media-body pad-hor">
-                      <div class="speech">
-                        <p>Hello Alice, I send yoiu this encrypted message.</p>
-                        <p class="speech-time"><i class="fa fa-clock-o fa-fw"></i>09:23AM</p>
-                      </div>
-                    </div>
-                  </li>
-
-                  <li class="mar-btm">
-                    <div class="media-right">
-                      <h4><span class="label label-warning">Alice</span></h4>
-                    </div>
-                    <div class="media-body pad-hor speech-right">
-                      <div class="speech">
-                        <p>Hi Bob, yeah I see. It's pretty cool!</p>
-                        <p class="speech-time"><i class="fa fa-clock-o fa-fw"></i> 09:25AM</p>
-                      </div>
-                    </div>
-                  </li>
-
-                  <li class="mar-btm">
-                    <div class="media-left">
-                      <h4><span class="label label-info">Bob</span></h4>
-                    </div>
-                    <div class="media-body pad-hor">
-                      <div class="speech">
-                        <p>Ok Alice I will see you soon.</p>
-                        <p class="speech-time"><i class="fa fa-clock-o fa-fw"></i>09:27AM</p>
-                      </div>
-                    </div>
-                  </li>
-
-                  <li class="mar-btm">
-                    <div class="media-right">
-                      <h4><span class="label label-warning">Alice</span></h4>
-                    </div>
-                    <div class="media-body pad-hor speech-right">
-                      <div class="speech">
-                        <p>great bob, have a nice day.</p>
-                        <p class="speech-time"><i class="fa fa-clock-o fa-fw"></i> 09:28AM</p>
-                      </div>
-                    </div>
-                  </li>
+                <ul id="msg-list" class="list-unstyled media-block">
 
                 </ul>
               </div>
@@ -87,7 +39,7 @@
                 </div>
               </div>
             </div>
-            <!--Widget footer-->
+            <!--chat footer-->
             <div class="panel-footer">
               <div class="row">
                 <div class="col-xs-9">

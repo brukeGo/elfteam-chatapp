@@ -13,16 +13,20 @@ function log(info) {
 }
 
 /**
+ * Get /search endpoint
+ */
+
+router.get('/search', (req, res, next) => {
+  res.render('search', {err: null});
+});
+
+/**
  * Get homepage, in case someone hits the homepage
  * redirect to /search endpoint
  */
 
 router.get('/', (req, res, next) => {
   res.redirect('/search');
-});
-
-router.get('/search', (req, res, next) => {
-  res.render('search', {err: null});
 });
 
 /**
@@ -117,6 +121,35 @@ router.post('/login', (req, res, next) => {
     }
   });
 });
+
+/**
+ * handle post request when client sends a message
+ */
+
+router.post('/auth_msg', (req, res, next) => {
+  var tok = req.headers.authorization;
+  var sender = req.body.sender;
+  var receiver = req.body.receiver;
+  var msg = req.body.msg;
+
+  if (tok && sender && receiver && msg) {
+
+    // validate received data and save the msg to 
+    // receiver's db record for pushing it to client
+    // the next time gets online
+    auth.handle_msg(tok, sender, receiver, msg, (err) => {
+      if (err) {
+        res.json({err: err});
+      } else {
+        res.json({err: null});
+      }
+    });
+  } else {
+    log('token/username not valid');
+    res.json({err: 'token/username not valid'});
+  }
+});
+
 
 module.exports = router;
 

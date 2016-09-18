@@ -7,8 +7,10 @@
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const levelup = require('levelup');
+const assign = require('deep-assign');
 const crypto = require('crypto');
-const jwtkey = process.env.JWT_SECRET = crypto.randomBytes(256).toString('base64');
+const encoding = 'base64';
+const jwtkey = process.env.JWT_SECRET = crypto.randomBytes(256).toString(encoding);
 var db = levelup(path.join(__dirname, 'db'));
 
 function log(info) {
@@ -45,7 +47,7 @@ function update_user(username, item, cb) {
       return cb(err);
     }
     if (user) {
-      user = Object.assign(user, item);
+      user = assign(user, item);
       db.put(username, JSON.stringify(user), (err) => {
         if (err) {
           return cb(err.message);
@@ -55,6 +57,27 @@ function update_user(username, item, cb) {
       });
     } else {
       return cb(`${username} not found.`);
+    }
+  });
+}
+
+/**
+ * search for a given username and return public key
+ * and its signature if found, otherwise return not found err
+ */
+
+function search(username, cb) {
+  find_user(username, (err, user) => {
+    if (err) {
+      return cb(err);
+    }
+    if (user.pubkey && user.sig) {
+      return cb(null, {
+        pubkey: user.pubkey,
+        sig: user.sig
+      });
+    } else {
+      return cb(`'${username} not found.'`);
     }
   });
 }
@@ -200,9 +223,9 @@ function login(username, passw, passw_sig, cb) {
         // verify password and its signature, if successful
         // generate jwt, save it to db and send it to client
 
-        valid = verify.verify(new Buffer(user.pubkey, 'base64').toString(), passw_sig, 'base64');
+        valid = verify.verify(Buffer.from(user.pubkey, encoding).toString(), passw_sig, encoding);
       } catch(err) {
-        return cb(err.toString());
+        return cb(err.message, null);
       }
 
       if (valid) {
@@ -225,22 +248,37 @@ function login(username, passw, passw_sig, cb) {
 }
 
 /**
- * search for a given username and return public key
- * and its signature if found, otherwise return not found err
+ * handle getting a message from a client to send it to other client
  */
 
-function search(username, cb) {
-  find_user(username, (err, user) => {
+function handle_msg(tok, sender, receiver, msg, cb) {
+  var d;
+  validate_token(sender, tok, (err, valid) => {
     if (err) {
       return cb(err);
     }
-    if (user.pubkey && user.sig) {
-      return cb(null, {
-        pubkey: user.pubkey,
-        sig: user.sig
+    if (valid) {
+      // find the receiver in db and save the msg
+      find_user(receiver, (err, user) => {
+        if (err) {
+          return cb(err);
+        }
+        d = new Date();
+        if (user.unread) {
+          user.unread.push({sender: sender, msg: msg, time: `${d.getHours()}:${d.getMinutes()}`});
+        } else {
+          user.unread = [{sender: sender, msg: msg, time: `${d.getHours()}:${d.getMinutes()}`}];
+        }
+        update_user(receiver, user, (err) => {   
+          if (err) {
+            log(err);
+            return cb(err);
+          }
+          return cb();
+        });
       });
     } else {
-      return cb(`'${username} not found.'`);
+      return cb('username/token not valid');
     }
   });
 }
@@ -249,5 +287,6 @@ module.exports = {
   register: register,
   save_pubkey: save_pubkey,
   login: login,
-  search: search
+  search: search,
+  handle_msg: handle_msg
 };

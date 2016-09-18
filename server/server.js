@@ -13,7 +13,7 @@ const http = require('http');
 const https = require('https');
 const express = require('express');
 const bodyParser = require('body-parser');
-const hsts = require('hsts');
+const helmet = require('helmet');
 const router = require('./router');
 var app = express();
 
@@ -54,7 +54,7 @@ function normalizePort(val) {
   return false;
 }
 
-var port = normalizePort(process.env.PORT || 3019);
+var port = normalizePort(process.env.PORT || 3012);
 
 /**
  * 'error' event listener
@@ -95,13 +95,14 @@ app.set('port', port);
 http.createServer((req, res) => {
   res.writeHead(301, {"Location": "https://" + req.headers.host + req.url});
   res.end();
-}).listen(3001);
+}).listen(3571);
 
 /**
  * create HTTPS server.
  */
 
 var server = https.createServer(options, app);
+//var server = http.createServer(app);
 
 /**
  * listen on provided port, on all network interfaces.
@@ -119,15 +120,9 @@ server.on('error', onError);
 
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
-
-// http strict transport security.
-// force browser to use https for
-// next 90 days
-app.use(hsts({
-  maxAge: 7776000000,
-  includeSubDomains: true,
-  force: true
-}));
+// use helmet which consists of 9 different security
+// middlewares for setting http headers appropriately
+app.use(helmet());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use('/', router);

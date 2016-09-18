@@ -68,7 +68,8 @@ function create_win() {
     height: 400,
     'min-width': 400,
     'min-height': 200,
-    icon: iconpath
+    icon: iconpath,
+    show: false
   });
 
   // by default, load login window
@@ -119,7 +120,7 @@ function create_win() {
     'min-width': 400,
     'min-height': 200,
     icon: iconpath,
-    show: false
+    show: true
   });
   chat_win.loadURL(chat_index);
   chat_win.webContents.openDevTools();
@@ -286,6 +287,24 @@ ipcMain.on('frd-ls', (ev, arg) => {
 
   if (frds && frds.length > 0) {
     ev.sender.send('frd-ls-success', frds);
+  }
+});
+
+/**
+ * send message event
+ */
+
+ipcMain.on('send-msg', (ev, arg) => {
+  if (arg.msg && arg.receiver) {
+    auth.send_msg(arg.msg, arg.receiver, (err) => {
+      if (err) {
+        showerr(err);
+        if (chat_win !== null) {
+          chat_win.reload();
+        }
+      }
+      console.log('message sent successfully');
+    });
   }
 });
 

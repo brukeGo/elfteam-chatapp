@@ -6,6 +6,9 @@ const ipc = electron.ipcRenderer;
 const add_btn = document.getElementById('add-btn');
 const frd_ls = document.getElementById('frd-ls');
 const receiver = document.getElementById('receiver');
+const msg = document.getElementById('msg-inp');
+const send_btn = document.getElementById('send-btn');
+const msg_ul = document.getElementById('msg-list');
 
 /**
  * add friend button click listener
@@ -36,6 +39,15 @@ ipc.on('frd-ls-success', (ev, frds) => {
     frds.forEach((frd) => {
       append_frd_list(frd);
     });
+  }
+});
+
+send_btn.addEventListener('click', (ev) => {
+  ev.preventDefault();
+  if (receiver.value !== '' && receiver.value !== null && msg.value !== '' && msg.value !== null) {
+    ipc.send('send-msg', {msg: msg.value, receiver: receiver.value});
+  } else {
+    ipc.send('chat-err', 'Message and receiver cannot be null');
   }
 });
 

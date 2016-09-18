@@ -16,9 +16,10 @@ const uri = {
   reg_pubk: 'https://localhost.daplie.com:3012/register/auth_pubk',
   login: 'https://localhost.daplie.com:3012/login',
   msg: 'https://localhost.daplie.com:3012/auth_msg',
+  unread: 'https://localhost.daplie.com:3012/auth_unread'
 };
 const encoding = 'base64';
-const alg = 'aes-256-gcm'; // encryption algorithm
+const alg = 'aes-256-cbc'; // encryption algorithm
 const hmac_alg = 'sha256'; // hmac algorithm
 
 /**
@@ -80,9 +81,8 @@ function get_privkey() {
  * get public key read in from a pem encoded file
  */
 
-function get_pubkey() {
+function get_pubkey(user) {
   try {
-    var user = get_username();
     return fs.readFileSync(path.join(keys, `${user}-key.pem`), 'utf8').trim();
   } catch(err) {
     throw err.message;
@@ -90,21 +90,9 @@ function get_pubkey() {
 }
 
 /**
- * return base64 encoded public key
- */
-
-function encode_pubkey() {
-  try {
-    return Buffer.from(get_pubkey()).toString(encoding);
-  } catch(err) {
-    throw err.message;
-  }
-}
-
-/**
- * sign data with user's private key before sending to server.
+ * sign data with user's private key before sending to server
  *
- * @return base64 signature of the given password
+ * @return base64 signature of the given data
  */
 
 function gen_sign(data) {
@@ -159,15 +147,14 @@ function destroy_token(cb) {
  * is a protected route.
  */
 
-function send_pubkey(token, cb) {
-  var username, pubkey, pubkey_sig, server_res;
+function send_pubkey(username, token, cb) {
+  var pubkey, pubkey_sig, server_res;
 
   try {
-    username = get_username();
-    pubkey = encode_pubkey();
+    pubkey = Buffer.from(get_pubkey(username)).toString(encoding);
     pubkey_sig = gen_sign(pubkey);
   } catch(err) {
-    return cb(err.toString());
+    return cb('error found:' + err.toString());
   }
   request.post({
     url: uri.reg_pubk,
@@ -198,8 +185,7 @@ function send_pubkey(token, cb) {
  */
 
 function register(username, passw, cb) {
-  var server_res = {};
-  var tok;
+  var server_res, tok;
 
   request.post({
     url: uri.reg,
@@ -226,7 +212,7 @@ function register(username, passw, cb) {
         fs.outputJsonSync(pubkeys, {});
         gen_privkey();
         gen_pubkey(username);
-        send_pubkey(tok, (err) => {
+        send_pubkey(username, tok, (err) => {
           if (err) {
             console.log(err);
             return cb(err);
@@ -355,9 +341,9 @@ function enc(msg, receiver) {
   } catch(err) {
     throw err;
   }
-  msg_key = crypto.randomBytes('32').toString(encoding);
-  hmac_key = crypto.randomBytes('32').toString(encoding);
-  iv = crypto.randomBytes('16').toString(encoding); // initialization vector 128 bits
+  msg_key = crypto.randomBytes(32);
+  hmac_key = crypto.randomBytes(32);
+  iv = crypto.randomBytes(16); // initialization vector 128 bits
   hmac = crypto.createHmac(hmac_alg, hmac_key);
 
   // encrypt the message with random iv
@@ -368,14 +354,14 @@ function enc(msg, receiver) {
   // make sure both the cipher text and
   // the iv are protected by hmac
   hmac.update(cipher_text);
-  hmac.update(iv);
+  hmac.update(iv.toString(encoding));
   tag = hmac.digest(encoding);
 
   // encrypt concatenated msg and hmac keys with receiver's public key
-  keys_encrypted = crypto.publicEncrypt(receiver_pubkey, Buffer.from(`${msg_key}#${hmac_key}`)).toString(encoding);
+  keys_encrypted = crypto.publicEncrypt(receiver_pubkey, Buffer.from(`${msg_key.toString(encoding)}&${hmac_key.toString(encoding)}`));
 
-  // concatenate cipher text, iv and hmac digest
-  return `${keys_encrypted}#${cipher_text}#${iv}#${tag}`;
+  // concatenate keys, cipher text, iv and hmac digest
+  return `${keys_encrypted.toString(encoding)}#${cipher_text}#${iv.toString(encoding)}#${tag}`;
 }
 
 /**
@@ -389,18 +375,17 @@ function dec(cipher_text) {
   try {
     privkey = get_privkey();
     chunk = cipher_text.split('#');
-    keys_encrypted = chunk[0];
-    ct = chunk[1].toString(encoding);
-    iv = chunk[2].toString(encoding);
-    tag = chunk[3].toString(encoding);
-
-    keys_dec = crypto.privateDecrypt(get_privkey(), Buffer.from(keys_encrypted, encoding)).toString('utf8').split('#');
-    msg_key = keys_dec[0].toString(encoding);
-    hmac_key = keys_dec[1].toString(encoding);
+    keys_encrypted = Buffer.from(chunk[0], encoding);
+    ct = chunk[1];
+    iv = Buffer.from(chunk[2], encoding);
+    tag = chunk[3];
+    keys_dec = crypto.privateDecrypt(privkey, keys_encrypted).toString('utf8').split('&');
+    msg_key = Buffer.from(keys_dec[0], encoding);
+    hmac_key = Buffer.from(keys_dec[1], encoding);
 
     hmac = crypto.createHmac(hmac_alg, hmac_key);
     hmac.update(ct);
-    hmac.update(iv);
+    hmac.update(iv.toString(encoding));
     computed_tag = hmac.digest(encoding);
     if (computed_tag !== tag) {
       throw 'encrypted tag not valid';
@@ -426,7 +411,6 @@ function send_msg(msg, receiver, cb) {
   } catch(err) {
     return cb(err);
   }
-
   request.post({
     url: uri.msg,
     rejectUnauthorized: true,
@@ -450,6 +434,63 @@ function send_msg(msg, receiver, cb) {
   });
 }
 
+/**
+ * parse list of unread messages object
+ */
+
+function parse_unread_list(unread_obj, cb) {
+  try {
+    
+  } catch(err) {
+    return cb(err, null);
+  }
+}
+
+/**
+ * request to get unread messages from server
+ */
+
+function get_unread(cb) {
+  var username, token, server_res;
+  try {
+    username = get_username();
+    token = get_token();
+  } catch(err) {
+    return cb(err, null);
+  }
+  request.post({
+    url: uri.unread,
+    rejectUnauthorized: true,
+    headers: {"authorization": token},
+    form: {un: username}
+  }, (error, res, body) => {
+    if (error) {
+      console.log(`request-err: ${error}`);
+      return cb(error.message, null);
+    }
+    try {
+      server_res = JSON.parse(body);
+    } catch(err) {
+      return cb(err.message, null);
+    }
+    if (server_res.err) {
+      return cb(server_res.err, null);
+    }
+    if (server_res.unread) {
+      parse_unread_list(server_res.unread, (err, unread) => {
+        if (err) {
+          return cb(err, null);
+        }
+        if (unread) {
+          return cb(null, unread);
+        }
+      });
+    } else {
+      return cb();
+    }
+  });
+}
+
 module.exports = {
   register: register,
   login: login,
@@ -457,6 +498,7 @@ module.exports = {
   verify_pubkey: verify_pubkey,
   save_frd_pubkey: save_frd_pubkey,
   get_frds: get_frds,
-  send_msg: send_msg
+  send_msg: send_msg,
+  get_unread: get_unread
 };
 

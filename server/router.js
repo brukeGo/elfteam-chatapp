@@ -150,6 +150,35 @@ router.post('/auth_msg', (req, res, next) => {
   }
 });
 
+/**
+ * handle post request to get unread messages
+ */
+
+router.post('/auth_unread', (req, res, next) => {
+  var tok = req.headers.authorization;
+  var username = req.body.un;
+
+  if (tok && username) {
+
+    // validate received data and save the msg to 
+    // receiver's db record for pushing it to client
+    // the next time gets online
+    auth.check_unread(tok, username, (err, unread) => {
+      if (err) {
+        res.json({err: err});
+      } 
+      if (unread) {
+        res.json({unread: unread});
+      } else {
+        res.json({unread: null});
+      }
+    });
+  } else {
+    log('token/username not valid');
+    res.json({err: 'token/username not valid'});
+  }
+});
+
 
 module.exports = router;
 

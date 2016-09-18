@@ -42,6 +42,13 @@ ipc.on('frd-ls-success', (ev, frds) => {
   }
 });
 
+ipc.send('unread');
+ipc.on('unread-success', (ev, unread) => {
+  if (unread) {
+    
+  }
+});
+
 send_btn.addEventListener('click', (ev) => {
   ev.preventDefault();
   if (receiver.value !== '' && receiver.value !== null && msg.value !== '' && msg.value !== null) {

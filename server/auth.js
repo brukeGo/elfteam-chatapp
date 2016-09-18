@@ -283,10 +283,19 @@ function handle_msg(tok, sender, receiver, msg, cb) {
   });
 }
 
+/**
+ * check client's unread messages
+ */
+
+function check_unread(token, username, cb) {
+  
+}
+
 module.exports = {
   register: register,
   save_pubkey: save_pubkey,
   login: login,
   search: search,
-  handle_msg: handle_msg
+  handle_msg: handle_msg,
+  check_unread: check_unread
 };

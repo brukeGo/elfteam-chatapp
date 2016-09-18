@@ -90,7 +90,7 @@ function create_win() {
     'min-width': 400,
     'min-height': 200,
     icon: iconpath,
-    show: false
+    show: true
   });
   reg_win.loadURL(reg_index);
   reg_win.webContents.openDevTools();
@@ -120,7 +120,7 @@ function create_win() {
     'min-width': 400,
     'min-height': 200,
     icon: iconpath,
-    show: true
+    show: false
   });
   chat_win.loadURL(chat_index);
   chat_win.webContents.openDevTools();
@@ -237,6 +237,18 @@ ipcMain.on('request-login', (event, dat) => {
   } else {
     showerr('username/password not valid');
   }
+});
+
+ipcMain.on('unread', (ev, arg) => {      
+  auth.get_unread((err, unread) => {
+    if (err) {
+      showerr(err);
+      chat_win.reload();
+    }
+    if (unread) {
+      ev.sender.send('unread-success', unread);
+    }
+  });
 });
 
 ipcMain.on('load-addfrd', () => {

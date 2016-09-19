@@ -279,7 +279,7 @@ ipcMain.on('add-frd', (ev, dat) => {
  * send friend list to ipc renderer event
  */
 
-ipcMain.on('frd-ls', (ev, arg) => {
+ipcMain.on('frd-ls', (ev) => {
   auth.get_frds((err, frds) => {
     if (err) {
       showerr(err);

@@ -2,21 +2,12 @@
 
 const electron = require('electron');
 const ipc = electron.ipcRenderer;
-const add_btn = document.getElementById('add-btn');
-const frd_ls = document.getElementById('frd-ls');
-const receiver = document.getElementById('receiver');
-const msg = document.getElementById('msg-inp');
-const send_btn = document.getElementById('send-btn');
-const msg_ul = document.getElementById('msg-list');
-
-/**
- * add friend button click listener
- */
-
-add_btn.addEventListener('click', (event) => { 
-  event.preventDefault();
-  ipc.send('load-addfrd');
-});
+var add_btn = document.getElementById('add-btn');
+var frd_ls = document.getElementById('frd-ls');
+var receiver = document.getElementById('receiver');
+var msg = document.getElementById('msg-inp');
+var send_btn = document.getElementById('send-btn');
+var msg_ul = document.getElementById('msg-list');
 
 /**
  * append a new friend to friend list
@@ -31,15 +22,14 @@ function append_frd_list(frd) {
   frd_btn.style['text-align'] = 'center';
   frd_btn.appendChild(document.createTextNode(frd.name));
   frd_btn.value = frd.name;
-  frd_btn.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    receiver.value = frd_btn.value;
-    ipc.send('show-msg', receiver.value);
-  });
   if (frd.msgs.length > 0) {
     badge.appendChild(document.createTextNode(frd.msgs.length));
     frd_btn.appendChild(badge);
   }
+  frd_btn.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    receiver.value = frd_btn.value;
+  });
   frd_ls.appendChild(frd_btn);
   return;
 }
@@ -91,6 +81,15 @@ function create_li_msg(username, msg, time, own) {
   return;
 }
 
+/**
+ * add friend button click listener
+ */
+
+add_btn.addEventListener('click', (ev) => { 
+  ev.preventDefault();
+  ipc.send('load-addfrd');
+});
+
 // get friend list
 ipc.send('frd-ls');
 
@@ -121,7 +120,8 @@ ipc.on('send-msg-success', (ev, arg) => {
 
 // show unread messages
 ipc.on('show-msg-success', (ev, arg) => {
-  const badge_c = document.getElementById('unread-count');
+  var badge_c = document.getElementById('unread-count');
+  console.log(arg);
   if (arg.sender && arg.msgs && arg.msgs.length > 0) {
     arg.msgs.forEach((message) => {
       create_li_msg(arg.sender, message.msg, message.time, false);

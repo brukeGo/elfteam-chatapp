@@ -8,18 +8,18 @@ const ipc = electron.ipcRenderer;
  * get document elements by their ids
  */
 
-const username = document.getElementById('usern');
-const pubkey = document.getElementById('pubkey');
-const sig = document.getElementById('sig');
-const add_btn = document.getElementById('verify-btn');
-const search_link = document.getElementById('search-link');
+var username = document.getElementById('usern');
+var pubkey = document.getElementById('pubkey');
+var sig = document.getElementById('sig');
+var add_btn = document.getElementById('verify-btn');
+var search_link = document.getElementById('search-link');
 
 /**
  * search link click listener
  */
 
-search_link.addEventListener('click', (event) => {
-  event.preventDefault();
+search_link.addEventListener('click', (ev) => {
+  ev.preventDefault();
   shell.openExternal('https://localhost.daplie.com:3761');
 });
 
@@ -27,9 +27,8 @@ search_link.addEventListener('click', (event) => {
  * add friend button click listener
  */
 
-add_btn.addEventListener('click', (event) => { 
-  event.preventDefault();
-
+add_btn.addEventListener('click', (ev) => { 
+  ev.preventDefault();
   if (username.value !== null && pubkey.value !== null && sig.value !== null &&
     username.value !== '' && pubkey.value !== '' && sig.value !== '') {
 
@@ -39,8 +38,3 @@ add_btn.addEventListener('click', (event) => {
       ipc.send('addfrd-err', 'input values cannot be null');
     }
 });
-/*
-ipc.on('add-frd-success', () => {
-  
-});
-*/

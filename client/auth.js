@@ -482,7 +482,12 @@ function save_unread_list(unread_msgs, cb) {
         }
       });
     });
-    return cb();
+    db.put('frd', JSON.stringify(frds), (err) => {
+      if (err) {
+        return cb(err.message);
+      }
+      return cb();
+    });
   });
 }
 
@@ -501,32 +506,32 @@ function check_unread(cb) {
         return cb(err.message);
       }
       request.post({
-    url: uri.unread,
-    rejectUnauthorized: true,
-    headers: {authorization: token},
-    form: {un: username}
-  }, (error, res, body) => {
-    if (error) {
-      console.log(`request-err: ${error}`);
-      return cb(error.message, null);
-    }
-    try {
-      server_res = JSON.parse(body);
-    } catch(err) {
-      return cb(err.message, null);
-    }
-    if (server_res.err) {
-      return cb(server_res.err, null);
-    }
-    if (server_res.unread) {
-      save_unread_list(server_res.unread, (err) => {
-        if (err) {
-          return cb(err, null);
+        url: uri.unread,
+        rejectUnauthorized: true,
+        headers: {authorization: token},
+        form: {un: username}
+      }, (error, res, body) => {
+        if (error) {
+          console.log(`request-err: ${error}`);
+          return cb(error.message, null);
         }
-        return cb();
+        try {
+          server_res = JSON.parse(body);
+        } catch(err) {
+          return cb(err.message, null);
+        }
+        if (server_res.err) {
+          return cb(server_res.err, null);
+        }
+        if (server_res.unread) {
+          save_unread_list(server_res.unread, (err) => {
+            if (err) {
+              return cb(err, null);
+            }
+            return cb();
+          });
+        }
       });
-    }
-  });
 
     });
   });

@@ -7,10 +7,10 @@ const ipc = electron.ipcRenderer;
  * get document elements by their ids
  */
 
-const user_in = document.getElementById('usern');
-const pass_in = document.getElementById('passw');
-const login_btn = document.getElementById('login-btn');
-const reg_link = document.getElementById('reg-link');
+var user_in = document.getElementById('usern');
+var pass_in = document.getElementById('passw');
+var login_btn = document.getElementById('login-btn');
+var reg_link = document.getElementById('reg-link');
 
 /**
  * load create account window on clicking

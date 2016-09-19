@@ -26,15 +26,13 @@ function showerr(err) {
   ipc.send('reg-err');
 }
 
-reg_btn.addEventListener('click', (event) => {
-  event.preventDefault();
-
+reg_btn.addEventListener('click', (ev) => {
+  ev.preventDefault();
   // check input fields are not null or empty, then
   // send username/passw to the main process to make
   // a request to /resiter endpoint
   if (user_in.value !== null && pass_in.value !== null && 
     user_in.value !== '' && pass_in.value !== '') {
-
       ipc.send('request-reg', {usern: user_in.value, passw: pass_in.value});
     } else {
       showerr('username and password cannot be null');

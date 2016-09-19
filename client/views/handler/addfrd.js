@@ -20,7 +20,7 @@ const search_link = document.getElementById('search-link');
 
 search_link.addEventListener('click', (event) => {
   event.preventDefault();
-  shell.openExternal('https://localhost.daplie.com:3019');
+  shell.openExternal('https://localhost.daplie.com:3761');
 });
 
 /**

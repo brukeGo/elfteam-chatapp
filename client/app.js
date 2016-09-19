@@ -61,15 +61,13 @@ function showinfo(info) {
  */
 
 function create_win() {
-
   // login window
   login_win = new BrowserWindow({
     width: 600,
     height: 400,
     'min-width': 400,
     'min-height': 200,
-    icon: iconpath,
-    show: false
+    icon: iconpath
   });
 
   // by default, load login window
@@ -90,7 +88,7 @@ function create_win() {
     'min-width': 400,
     'min-height': 200,
     icon: iconpath,
-    show: true
+    show: false
   });
   reg_win.loadURL(reg_index);
   reg_win.webContents.openDevTools();
@@ -197,7 +195,7 @@ ipcMain.on('load-reg', () => {
  * if successful, load login window
  */
 
-ipcMain.on('request-reg', (event, dat) => {
+ipcMain.on('request-reg', (ev, dat) => {
   if (dat.usern && dat.passw) {
     auth.register(dat.usern, dat.passw, (err) => {
       if (err) {
@@ -221,34 +219,29 @@ ipcMain.on('request-reg', (event, dat) => {
  * if successful, load chat window
  */
 
-ipcMain.on('request-login', (event, dat) => {
+ipcMain.on('request-login', (ev, dat) => {
   if (dat.usern && dat.passw) {
     auth.login(dat.usern, dat.passw, (err) => {
       if (err) {
         showerr(err);
         login_win.reload();
       } else {
-        if (login_win !== null) {
-          login_win.close();
-        }
-        chat_win.show();
+        auth.check_unread((err) => {
+          if (err) {
+            showerr(err);
+            login_win.reload();
+          } else {
+            if (login_win !== null) {
+              login_win.close();
+            }
+            chat_win.show();
+          }
+        });
       }
     });
   } else {
     showerr('username/password not valid');
   }
-});
-
-ipcMain.on('unread', (ev, arg) => {      
-  auth.get_unread((err, unread) => {
-    if (err) {
-      showerr(err);
-      chat_win.reload();
-    }
-    if (unread) {
-      ev.sender.send('unread-success', unread);
-    }
-  });
 });
 
 ipcMain.on('load-addfrd', () => {
@@ -265,7 +258,7 @@ ipcMain.on('add-frd', (ev, dat) => {
       showerr('Public key/signature not verified');
       addfrd_win.reload();
     } else {
-      auth.save_frd_pubkey(dat.frd_usern, dat.frd_pubkey, (err) => {
+      auth.add_frd(dat.frd_usern, dat.frd_pubkey, (err) => {
         if (err) {
           showerr(err);
           addfrd_win.reload();
@@ -287,19 +280,17 @@ ipcMain.on('add-frd', (ev, dat) => {
  */
 
 ipcMain.on('frd-ls', (ev, arg) => {
-  var frds;
-  try {
-    frds = auth.get_frds();
-  } catch(err) {
-    showerr(err);
-    if (chat_win !== null) {
-      chat_win.reload();
+  auth.get_frds((err, frds) => {
+    if (err) {
+      showerr(err);
+      if (chat_win !== null) {
+        chat_win.reload();
+      }
     }
-  }
-
-  if (frds && frds.length > 0) {
-    ev.sender.send('frd-ls-success', frds);
-  }
+    if (frds && frds.length > 0) {
+      ev.sender.send('frd-ls-success', frds);
+    }
+  });
 });
 
 /**
@@ -308,14 +299,35 @@ ipcMain.on('frd-ls', (ev, arg) => {
 
 ipcMain.on('send-msg', (ev, arg) => {
   if (arg.msg && arg.receiver) {
-    auth.send_msg(arg.msg, arg.receiver, (err) => {
+    auth.send_msg(arg.msg, arg.receiver, (err, res) => {
       if (err) {
         showerr(err);
         if (chat_win !== null) {
           chat_win.reload();
         }
       }
-      console.log('message sent successfully');
+      if (res.un && res.time) {
+        console.log('message sent successfully');
+        ev.sender.send('send-msg-success', {
+          un: res.un,
+          msg: arg.msg,
+          time: res.time
+        });
+      }
+    });
+  }
+});
+
+ipcMain.on('show-msg', (ev, frd_username) => {
+  if (frd_username) {
+    auth.show_msg(frd_username, (err, res) => {
+      if (err) {
+        showerr(err);
+        chat_win.reload();
+      }
+      if (res && res.length > 0) {
+        ev.sender.send('show-msg-success', {sender: frd_username, msgs: res});
+      }
     });
   }
 });

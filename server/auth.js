@@ -10,7 +10,8 @@ const levelup = require('levelup');
 const assign = require('deep-assign');
 const crypto = require('crypto');
 const encoding = 'base64';
-const jwtkey = process.env.JWT_SECRET = crypto.randomBytes(256).toString(encoding);
+const jwtkey = crypto.randomBytes(256).toString(encoding);
+
 var db = levelup(path.join(__dirname, 'db'));
 
 function log(info) {
@@ -89,7 +90,6 @@ function search(username, cb) {
  */
 
 function gen_jwt(username) {
-
   // by default, expire the token after 24 hours (time is in secs)
   const expire_def = Math.floor(new Date().getTime()/1000) + 60*1440;
   return jwt.sign({
@@ -119,9 +119,8 @@ function verify_jwt(token) {
  * validate json web token for a given username
  */
 
-function validate_token(username, token, cb) {
+function validate_token(token, username, cb) {
   var decoded;
-
   decoded = verify_jwt(token);
   if (!decoded || !decoded.nam) {    
     return cb('token not valid', false);
@@ -148,18 +147,16 @@ function validate_token(username, token, cb) {
 
 function register(username, passw, cb) {
   var tok;
-
   // make sure username is unique
   find_user(username, (err) => {
     if (err) {
-
       // username is unique, generate jwt for register
       // authentication and save it to db
-
       tok = gen_jwt(username);
       db.put(username, JSON.stringify({
-        "password": passw,
-        "token": tok
+        'password': passw,
+        'token': tok,
+        'unread': []
       }), (err) => {
         if (err) {
           log(err.message);
@@ -178,10 +175,9 @@ function register(username, passw, cb) {
  * validate register jwt and store user's public key in db
  */
 
-function save_pubkey(username, token, pubkey, sig, cb) {
-
+function save_pubkey(token, username, pubkey, sig, cb) {
   // validate the token received from client
-  validate_token(username, token, (err, valid) => {
+  validate_token(token, username, (err, valid) => {
     if (err) {
       return cb(err);
     }
@@ -206,7 +202,6 @@ function save_pubkey(username, token, pubkey, sig, cb) {
  */
 
 function login(username, passw, passw_sig, cb) {
-
   const verify = crypto.createVerify('RSA-SHA256');
   var tok, valid;
 
@@ -222,7 +217,6 @@ function login(username, passw, passw_sig, cb) {
 
         // verify password and its signature, if successful
         // generate jwt, save it to db and send it to client
-
         valid = verify.verify(Buffer.from(user.pubkey, encoding).toString(), passw_sig, encoding);
       } catch(err) {
         return cb(err.message, null);
@@ -253,7 +247,7 @@ function login(username, passw, passw_sig, cb) {
 
 function handle_msg(tok, sender, receiver, msg, cb) {
   var d;
-  validate_token(sender, tok, (err, valid) => {
+  validate_token(tok, sender, (err, valid) => {
     if (err) {
       return cb(err);
     }
@@ -263,12 +257,8 @@ function handle_msg(tok, sender, receiver, msg, cb) {
         if (err) {
           return cb(err);
         }
-        d = new Date();
-        if (user.unread) {
-          user.unread.push({sender: sender, msg: msg, time: `${d.getHours()}:${d.getMinutes()}`});
-        } else {
-          user.unread = [{sender: sender, msg: msg, time: `${d.getHours()}:${d.getMinutes()}`}];
-        }
+        d = new Date(); 
+        user.unread.push({sender: sender, msg: msg, time: `${d.getHours()}:${d.getMinutes()}`});
         update_user(receiver, user, (err) => {   
           if (err) {
             log(err);
@@ -288,7 +278,32 @@ function handle_msg(tok, sender, receiver, msg, cb) {
  */
 
 function check_unread(token, username, cb) {
-  
+  var unread_msgs;
+  validate_token(token, username, (err, valid) => {
+    if (err) {
+      return cb(err, null);
+    }
+    if (valid) {
+      find_user(username, (err, user) => {
+        if (err) {
+          return cb(err, null);
+        }
+        if (user.unread) {
+          unread_msgs = user.unread;
+          user.unread = [];
+          update_user(username, user, (err) => {   
+            if (err) {
+              log(err);
+              return cb(err, null);
+            }
+            return cb(null, unread_msgs);
+          });
+        }
+      });
+    } else {
+      return cb('username/token not valid', null);
+    }
+  });
 }
 
 module.exports = {

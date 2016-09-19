@@ -1,42 +1,27 @@
 'use strict';
 
-const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs-extra');
 const exec = require('child_process').execSync;
 const request = require('request');
-const conf = path.join(os.homedir(), '.elfpm');
-const keys = path.join(conf, 'keys');
-const pubkeys = path.join(conf, 'pubkeys.json');
-const privkey = path.join(keys, 'priv.pem');
-const token_path = path.join(conf, '.tok');
+const levelup = require('levelup');
+const tmp = path.join(__dirname, 'tmp');
+const privkey_path = path.join(tmp, 'priv.pem');
+const pubkey_path = path.join(tmp, 'pub.pem');
 const uri = {
-  reg: 'https://localhost.daplie.com:3012/register',
-  reg_pubk: 'https://localhost.daplie.com:3012/register/auth_pubk',
-  login: 'https://localhost.daplie.com:3012/login',
-  msg: 'https://localhost.daplie.com:3012/auth_msg',
-  unread: 'https://localhost.daplie.com:3012/auth_unread'
+  reg: 'https://localhost.daplie.com:3761/register',
+  reg_pubk: 'https://localhost.daplie.com:3761/register/auth_pubk',
+  login: 'https://localhost.daplie.com:3761/login',
+  msg: 'https://localhost.daplie.com:3761/auth_msg',
+  unread: 'https://localhost.daplie.com:3761/auth_unread'
 };
 const encoding = 'base64';
 const alg = 'aes-256-cbc'; // encryption algorithm
 const hmac_alg = 'sha256'; // hmac algorithm
 
-/**
- * get username
- */
-
-function get_username() {
-  try {
-    fs.readdirSync(keys).forEach((f) => {
-      if (f.includes('key')) {
-        return f.split('-')[0];
-      }
-    });
-  } catch(err) {
-    throw err;
-  }
-}
+// client's local storage
+var db = levelup(path.join(__dirname, 'db'));
 
 /**
  * generate fresh RSA key by executing openssl commands
@@ -44,23 +29,22 @@ function get_username() {
 
 function gen_privkey() {
   try {
-    exec(`openssl genrsa -out ${privkey} 2048`, {stdio: [0, 'pipe']});
+    exec(`openssl genrsa -out ${privkey_path} 2048`, {stdio: [0, 'pipe']});
   } catch(err) {
-    throw err.toString();
+    throw err.message;
   }
   return;
 }
 
 /**
- * calculate the actual client's public key from RSA key
+ * calculate client's public key from RSA key
  */
 
-function gen_pubkey(user) {
-  var pubkey_path = path.join(keys, `${user}-key.pem`);
+function gen_pubkey() {
   try {
-    exec(`openssl rsa -in ${privkey} -out ${pubkey_path} -outform PEM -pubout`, {stdio: [0, 'pipe']});
+    exec(`openssl rsa -in ${privkey_path} -out ${pubkey_path} -outform PEM -pubout`, {stdio: [0, 'pipe']});
   } catch(err) {
-    throw err.toString();
+    throw err.message;
   }
   return;
 }
@@ -71,7 +55,7 @@ function gen_pubkey(user) {
 
 function get_privkey() {
   try {
-    return fs.readFileSync(privkey, 'utf8').trim();
+    return fs.readFileSync(privkey_path, 'utf8').trim();
   } catch(err) {
     throw err.message;
   }
@@ -81,9 +65,9 @@ function get_privkey() {
  * get public key read in from a pem encoded file
  */
 
-function get_pubkey(user) {
+function get_pubkey() {
   try {
-    return fs.readFileSync(path.join(keys, `${user}-key.pem`), 'utf8').trim();
+    return fs.readFileSync(pubkey_path, 'utf8').trim();
   } catch(err) {
     throw err.message;
   }
@@ -95,37 +79,17 @@ function get_pubkey(user) {
  * @return base64 signature of the given data
  */
 
-function gen_sign(data) {
-  const sign = crypto.createSign('RSA-SHA256');
-  sign.write(data);
-  sign.end();
-  return sign.sign(get_privkey(), encoding);
-}
-
-/**
- * save json web token locally for subsequent
- * authenticated requests
- */
-
-function save_token(tok, cb) {
-  fs.outputFile(token_path, tok, (err) => {
+function gen_sign(data, cb) {
+  var sign;
+  db.get('priv', (err, privkey) => {
     if (err) {
-      return cb(err.message);
+      return cb(err.message, null);
     }
-    return cb();
+    sign = crypto.createSign('RSA-SHA256');
+    sign.write(data);
+    sign.end();
+    return cb(null, sign.sign(privkey, encoding));
   });
-}
-
-/**
- * return locally saved token
- */
-
-function get_token() {
-  try {
-    return fs.readFileSync(token_path, 'utf8').trim();
-  } catch(err) {
-    throw err.message;
-  }
 }
 
 /**
@@ -133,7 +97,7 @@ function get_token() {
  */
 
 function destroy_token(cb) {
-  fs.remove(token_path, (err) => {
+  db.del('tok', (err) => {
     if (err) {
       return cb(err.message);
     }
@@ -148,45 +112,49 @@ function destroy_token(cb) {
  */
 
 function send_pubkey(username, token, cb) {
-  var pubkey, pubkey_sig, server_res;
+  var server_res;
 
-  try {
-    pubkey = Buffer.from(get_pubkey(username)).toString(encoding);
-    pubkey_sig = gen_sign(pubkey);
-  } catch(err) {
-    return cb('error found:' + err.toString());
-  }
-  request.post({
-    url: uri.reg_pubk,
-    rejectUnauthorized: true,
-    headers: {"authorization": token},
-    form: {un: username, pubkey: pubkey, sig: pubkey_sig}
-  }, (error, res, body) => {
-    if (error) {
-      console.log(`request-err: ${error}`);
-      return cb(error.message);
-    }
-
-    try {
-      server_res = JSON.parse(body);
-    } catch(err) {
+  db.get('pub', (err, pubkey) => {
+    if (err) {
       return cb(err.message);
     }
-    if (server_res.err) {
-      return cb(server_res.err);
-    } else {
-      return cb();
-    }
+    gen_sign(pubkey, (err, pubkey_sig) => {
+      if (err) {
+        return cb(err.message);
+      }
+      request.post({
+        url: uri.reg_pubk,
+        rejectUnauthorized: true,
+        headers: {authorization: token},
+        form: {un: username, pubkey: Buffer.from(pubkey).toString(encoding), sig: pubkey_sig}
+      }, (error, res, body) => {
+        if (error) {
+          console.log(`request-err: ${error}`);
+          return cb(error.message);
+        }
+        try {
+          server_res = JSON.parse(body);
+        } catch(err) {
+          return cb(err.message);
+        }
+        if (server_res.err) {
+          return cb(server_res.err);
+        }
+        fs.removeSync(tmp);
+        return cb();
+      });
+    });
   });
 }
 
 /**
- * make a post request to /register endpoint
+ * make a post request to /register endpoint.
+ * after successfully registered, save user data
+ * to local db
  */
 
 function register(username, passw, cb) {
-  var server_res, tok;
-
+  var server_res;
   request.post({
     url: uri.reg,
     rejectUnauthorized: true,
@@ -204,23 +172,29 @@ function register(username, passw, cb) {
     if (server_res.err) {
       return cb(server_res.err);
     }
-    if (server_res.token) {
-      tok = server_res.token;  
+    if (server_res.token) { 
       try {
-        fs.removeSync(conf);
-        fs.mkdirpSync(keys);
-        fs.outputJsonSync(pubkeys, {});
+        fs.removeSync(tmp);
+        fs.mkdirpSync(tmp);
         gen_privkey();
-        gen_pubkey(username);
-        send_pubkey(username, tok, (err) => {
-          if (err) {
-            console.log(err);
-            return cb(err);
-          }
-          return cb();
-        });
+        gen_pubkey();
+        db.batch()
+          .put('name', username)
+          .put('priv', get_privkey())
+          .put('pub', get_pubkey())
+          .put('frd', JSON.stringify({ls: []}))
+          .write(() => {
+            console.log(`${username} saved to db successfully`);
+            send_pubkey(username, server_res.token, (err) => {
+              if (err) {
+                console.log(err);
+                return cb(err);
+              }
+              return cb();
+            });
+          });
       } catch(er) {
-        return cb(er);  
+        return cb(er.message);  
       }
     } else {
       return cb('err: no authorization token');
@@ -233,54 +207,63 @@ function register(username, passw, cb) {
  */
 
 function login(usern, passw, cb) {
-  var server_res = {};
-
-  request.post({
-    url: uri.login,
-    rejectUnauthorized: true,
-    form: {un: usern, pw: passw, pw_sig: gen_sign(passw)}
-  }, (error, res, body) => {
-    if (error) {
-      console.log(`request-err: ${error}`);
-      return cb(error.message, null);
+  var server_res;
+  gen_sign(passw, (err, sig) => {
+    if (err) {
+      return cb(err);
     }
-    try {
-      server_res = JSON.parse(body);
-    } catch(err) {
-      return cb(err.message);
-    }
-    if (server_res.err) {
-      return cb(server_res.err, null);
-    }
-
-    // successful authentication, server responded with a token
-    // save it locally for the current session subsequent requests
-    if (server_res.token) {
-      save_token(server_res.token, (err) => {
-        if (err) {
-          return cb(err);
-        }
-        return cb();
-      });
-    } else {
-      return cb('err: no authorization token');
-    }
+    request.post({
+      url: uri.login,
+      rejectUnauthorized: true,
+      form: {un: usern, pw: passw, pw_sig: sig}
+    }, (error, res, body) => {
+      if (error) {
+        console.log(`request-err: ${error}`);
+        return cb(error.message, null);
+      }
+      try {
+        server_res = JSON.parse(body);
+      } catch(err) {
+        return cb(err.message);
+      }
+      if (server_res.err) {
+        return cb(server_res.err, null);
+      }
+      // successful authentication, server responded with a token
+      // save it locally for the current session subsequent requests
+      if (server_res.token) {
+        db.put('tok', server_res.token, (err) => {
+          if (err) {
+            return cb(err.message);
+          }
+          return cb();
+        });
+      } else {
+        return cb('err: no authorization token');
+      }
+    });
   });
 }
 
 /**
- * save friend's verified public key and add it to the list of pubkeys
+ * add friend's data to local db
  */
 
-function save_frd_pubkey(frd_username, pubkey, cb) {
-  fs.readJson(pubkeys, (err, f) => {
+function add_frd(frd_username, pubkey, cb) {
+  var frds;
+  db.get('frd', (err, val) => {
     if (err) {
-      return cb(err);
+      return cb(err.message);
     }
-    f = Object.assign(f, {[frd_username]: pubkey});
-    fs.writeJson(pubkeys, f, (err) => {
+    try {
+      frds = JSON.parse(val);
+    } catch(er) {
+      return cb(er.message);
+    }
+    frds.ls.push({name: frd_username, pubkey: pubkey, msgs: []});
+    db.put('frd', JSON.stringify(frds), (err) => {
       if (err) {
-        return cb(err);
+        return cb(err.message);
       }
       return cb();
     });
@@ -288,114 +271,148 @@ function save_frd_pubkey(frd_username, pubkey, cb) {
 }
 
 /**
- * verify friend's public key received from server
+ * verify friend's public key
  */
 
-function verify_pubkey(pubkey, sig) {    
+function verify_pubkey(pubkey, sig) {
   const veri = crypto.createVerify('RSA-SHA256');
-  veri.write(pubkey);
+  var pk = Buffer.from(pubkey, encoding).toString();
+  veri.write(pk);
   veri.end();
-  return veri.verify(Buffer.from(pubkey, encoding).toString(), sig, encoding);
+  return veri.verify(pk, sig, encoding);
 }
 
 /**
  * get the client's friend list
  */
 
-function get_frds() {
-  try {
-    return Object.keys(fs.readJsonSync(pubkeys));
-  } catch(err) {
-    return;
-  }
+function get_frds(cb) {
+  var frds;
+  var result = [];
+  db.get('frd', (err, val) => {
+    if (err) {
+      return cb(null, null);
+    }
+    try {
+      frds = JSON.parse(val);
+    } catch(er) {
+      return cb(er.message, null);
+    }
+    if (frds.ls.length > 0) {
+      frds.ls.forEach((frd) => {
+        result.push({name: frd.name, msgs: frd.msgs});
+      });
+    }  
+    return cb(null, result);
+  });
 }
 
 /**
  * get friend's public key from friend list
  */
 
-function get_frd_pubkey(frd_username) {
-  var pubkeys;
-  try {
-    pubkeys = fs.readJsonSync(pubkeys);
-    if (Object.keys(pubkeys).indexOf(frd_username) === -1) {
-      throw `${frd_username} not found in friend list`;
-    } else {
-      return pubkeys[frd_username];
+function get_frd_pubkey(frd_username, cb) {
+  var frds;
+  db.get('frd', (err, val) => {
+    if (err) {
+      return cb(err.message, null);
     }
-  } catch(err) {
-    throw `${frd_username} not found in friend list`;
-  }
+    try {
+      frds = JSON.parse(val);
+    } catch(er) {
+      return cb(er.message, null);
+    }
+    frds.ls.forEach((frd) => {
+      if (frd.name === frd_username && frd.pubkey) {
+        return cb(null, Buffer.from(frd.pubkey, encoding).toString());
+      }
+    });
+    return cb(null, null);
+  });
 }
 
 /**
- * encrypt a given message and return the cipher text
+ * encrypt a given message with receiver's pubkey 
+ * and return the cipher text
  */
 
-function enc(msg, receiver) {
-  var receiver_pubkey, msg_key, hmac_key, iv,
+function enc(msg, receiver, cb) {
+  var msg_key, hmac_key, iv,
     hmac, tag, keys_encrypted, cipher, cipher_text;
 
-  try {
-    receiver_pubkey = get_frd_pubkey(receiver);
-  } catch(err) {
-    throw err;
-  }
-  msg_key = crypto.randomBytes(32);
-  hmac_key = crypto.randomBytes(32);
-  iv = crypto.randomBytes(16); // initialization vector 128 bits
-  hmac = crypto.createHmac(hmac_alg, hmac_key);
+  get_frd_pubkey(receiver, (err, rec_pubkey) => {
+    if (err) {
+      return cb(err, null);
+    }
+    if (rec_pubkey) {
+      // we have receiver's pubkey, try to
+      // encrypt the message
+      try {
+        msg_key = crypto.randomBytes(32);
+        hmac_key = crypto.randomBytes(32);
+        iv = crypto.randomBytes(16); // initialization vector 128 bits
+        hmac = crypto.createHmac(hmac_alg, hmac_key);
 
-  // encrypt the message with random iv
-  cipher = crypto.createCipheriv(alg, msg_key, iv);
-  cipher_text = cipher.update(msg, 'utf8', encoding);
-  cipher_text += cipher.final(encoding);
+        // encrypt the message with random iv
+        cipher = crypto.createCipheriv(alg, msg_key, iv);
+        cipher_text = cipher.update(msg, 'utf8', encoding);
+        cipher_text += cipher.final(encoding);
 
-  // make sure both the cipher text and
-  // the iv are protected by hmac
-  hmac.update(cipher_text);
-  hmac.update(iv.toString(encoding));
-  tag = hmac.digest(encoding);
+        // make sure both the cipher text and
+        // the iv are protected by hmac
+        hmac.update(cipher_text);
+        hmac.update(iv.toString(encoding));
+        tag = hmac.digest(encoding);
 
-  // encrypt concatenated msg and hmac keys with receiver's public key
-  keys_encrypted = crypto.publicEncrypt(receiver_pubkey, Buffer.from(`${msg_key.toString(encoding)}&${hmac_key.toString(encoding)}`));
-
-  // concatenate keys, cipher text, iv and hmac digest
-  return `${keys_encrypted.toString(encoding)}#${cipher_text}#${iv.toString(encoding)}#${tag}`;
+        // encrypt concatenated msg and hmac keys with receiver's public key
+        keys_encrypted = crypto.publicEncrypt(rec_pubkey, Buffer.from(`${msg_key.toString(encoding)}&${hmac_key.toString(encoding)}`));
+        // concatenate keys, cipher text, iv and hmac digest
+        return cb(null, `${keys_encrypted.toString(encoding)}#${cipher_text}#${iv.toString(encoding)}#${tag}`);
+      } catch(err) {
+        return cb(err.message, null);
+      } 
+    }
+  });
 }
 
 /**
  * decrypt a given cipher text and return the derived plaintext
  */
 
-function dec(cipher_text) {
-  var privkey, chunk, keys_encrypted, keys_dec, 
+function dec(cipher_text, cb) {
+  var chunk, keys_encrypted, keys_dec, 
     ct, iv, tag, msg_key, hmac_key, hmac,
     computed_tag, decipher, decrypted;
-  try {
-    privkey = get_privkey();
-    chunk = cipher_text.split('#');
-    keys_encrypted = Buffer.from(chunk[0], encoding);
-    ct = chunk[1];
-    iv = Buffer.from(chunk[2], encoding);
-    tag = chunk[3];
-    keys_dec = crypto.privateDecrypt(privkey, keys_encrypted).toString('utf8').split('&');
-    msg_key = Buffer.from(keys_dec[0], encoding);
-    hmac_key = Buffer.from(keys_dec[1], encoding);
 
-    hmac = crypto.createHmac(hmac_alg, hmac_key);
-    hmac.update(ct);
-    hmac.update(iv.toString(encoding));
-    computed_tag = hmac.digest(encoding);
-    if (computed_tag !== tag) {
-      throw 'encrypted tag not valid';
+  db.get('priv', (err, privkey) => {
+    if (err) {
+      return cb(err.message, null);
     }
-    decipher = crypto.createDecipheriv(alg, msg_key, iv);
-    decrypted = decipher.update(ct, encoding, 'utf8');
-    return decrypted += decipher.final('utf8');
-  } catch(err) {
-    throw err;
-  }
+    try {
+      chunk = cipher_text.split('#');
+      keys_encrypted = Buffer.from(chunk[0], encoding);
+      ct = chunk[1];
+      iv = Buffer.from(chunk[2], encoding);
+      tag = chunk[3];
+      keys_dec = crypto.privateDecrypt(privkey, keys_encrypted).toString('utf8').split('&');
+      msg_key = Buffer.from(keys_dec[0], encoding);
+      hmac_key = Buffer.from(keys_dec[1], encoding);
+
+      hmac = crypto.createHmac(hmac_alg, hmac_key);
+      hmac.update(ct);
+      hmac.update(iv.toString(encoding));
+      computed_tag = hmac.digest(encoding);
+      if (computed_tag !== tag) {
+        return cb('integrity tag not valid', null);
+      }
+      decipher = crypto.createDecipheriv(alg, msg_key, iv);
+      decrypted = decipher.update(ct, encoding, 'utf8');
+      decrypted += decipher.final('utf8');
+      return cb(null, decrypted);
+    } catch(err) {
+      return cb(err.message, null);
+    }
+  });
 }
 
 /**
@@ -403,65 +420,90 @@ function dec(cipher_text) {
  */
 
 function send_msg(msg, receiver, cb) {
-  var username, token, enc_data, server_res;
-  try {
-    username = get_username();
-    token = get_token();
-    enc_data = enc(msg, receiver);
-  } catch(err) {
-    return cb(err);
-  }
-  request.post({
-    url: uri.msg,
-    rejectUnauthorized: true,
-    headers: {"authorization": token},
-    form: {sender: username, receiver: receiver, msg: enc_data}
-  }, (error, res, body) => {
-    if (error) {
-      console.log(`request-err: ${error}`);
-      return cb(error.message);
-    }
-    try {
-      server_res = JSON.parse(body);
-    } catch(err) {
+  var d, server_res;
+  db.get('name', (err, username) => {
+    if (err) {
       return cb(err.message);
     }
-    if (server_res.err) {
-      return cb(server_res.err);
-    } else {
-      return cb();
-    }
+    db.get('tok', (err, token) => {
+      if (err) {
+        return cb(err.message);
+      }
+      enc(msg, receiver, (err, enc_dat) => {
+        if (err) {
+          return cb(err);
+        }
+        request.post({
+          url: uri.msg,
+          rejectUnauthorized: true,
+          headers: {authorization: token},
+          form: {sender: username, rec: receiver, msg: enc_dat}
+        }, (error, res, body) => {
+          if (error) {
+            console.log(`request-err: ${error}`);
+            return cb(error.message, null, null);
+          }
+          try {
+            server_res = JSON.parse(body);
+          } catch(err) {
+            return cb(err.message, null, null);
+          }
+          if (server_res.err) {
+            return cb(server_res.err, null, null);
+          } else {
+            d = new Date();
+            return cb(null, {un: username, time: `${d.getHours()}:${d.getMinutes()}`});
+          }
+        });
+      });
+    });
   });
 }
 
 /**
- * parse list of unread messages object
+ * parse list of unread messages
  */
 
-function parse_unread_list(unread_obj, cb) {
-  try {
-    
-  } catch(err) {
-    return cb(err, null);
-  }
+function save_unread_list(unread_msgs, cb) {
+  var frds;
+  db.get('frd', (err, val) => {
+    if (err) {
+      return cb(err.message);
+    }
+    try {
+      frds = JSON.parse(val);
+    } catch(er) {
+      return cb(er.message);
+    }
+    frds.ls.forEach((frd) => {
+      unread_msgs.forEach((unread_msg) => {
+        if (unread_msg.sender === frd.name) {
+          frd.msgs.push({msg: unread_msg.msg, time: unread_msg.time});
+        }
+      });
+    });
+    return cb();
+  });
 }
 
 /**
  * request to get unread messages from server
  */
 
-function get_unread(cb) {
-  var username, token, server_res;
-  try {
-    username = get_username();
-    token = get_token();
-  } catch(err) {
-    return cb(err, null);
-  }
-  request.post({
+function check_unread(cb) {
+  var server_res;
+  db.get('name', (err, username) => {
+    if (err) {
+      return cb(err.message);
+    }
+    db.get('tok', (err, token) => {
+      if (err) {
+        return cb(err.message);
+      }
+      request.post({
     url: uri.unread,
     rejectUnauthorized: true,
-    headers: {"authorization": token},
+    headers: {authorization: token},
     form: {un: username}
   }, (error, res, body) => {
     if (error) {
@@ -477,17 +519,49 @@ function get_unread(cb) {
       return cb(server_res.err, null);
     }
     if (server_res.unread) {
-      parse_unread_list(server_res.unread, (err, unread) => {
+      save_unread_list(server_res.unread, (err) => {
         if (err) {
           return cb(err, null);
         }
-        if (unread) {
-          return cb(null, unread);
-        }
+        return cb();
       });
-    } else {
-      return cb();
     }
+  });
+
+    });
+  });
+}
+
+/**
+ * send friend's decrypted messages to ipc renderer 
+ * for showing on frond-end
+ */
+
+function show_msg(frd_username, cb) {
+  var dec_msgs = [];
+  var frds;
+  db.get('frd', (err, val) => {
+    if (err) {
+      return cb(err.message, null);
+    }
+    try {
+      frds = JSON.parse(val);
+    } catch(er) {
+      return cb(er.message, null);
+    }
+    frds.ls.forEach((frd) => {
+      if (frd.name === frd_username && frd.msgs.length > 0) {
+        frd.msgs.forEach((message) => {
+          dec(message.msg, (err, decrypted) => {
+            if (err) {
+              return cb(err, null);
+            }
+            dec_msgs.push({msg: decrypted, time: message.time});
+          });
+        });
+      }
+    });
+    return cb(null, dec_msgs);
   });
 }
 
@@ -496,9 +570,10 @@ module.exports = {
   login: login,
   destroy_token: destroy_token,
   verify_pubkey: verify_pubkey,
-  save_frd_pubkey: save_frd_pubkey,
+  add_frd: add_frd,
   get_frds: get_frds,
   send_msg: send_msg,
-  get_unread: get_unread
+  check_unread: check_unread,
+  show_msg: show_msg
 };
 

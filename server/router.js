@@ -65,7 +65,6 @@ router.post('/register', (req, res, next) => {
       if (err) {
         res.json({err: err});
       }
-
       // successfully created a new account
       // return the token to client
       if (tok) {
@@ -89,14 +88,14 @@ router.post('/register/auth_pubk', (req, res, next) => {
   var username = req.body.un;
   var pubkey = req.body.pubkey;
   var sig = req.body.sig;
-
   if (tok && username && pubkey && sig) {
-    auth.save_pubkey(username, tok, pubkey, sig, (err) => {
+    auth.save_pubkey(tok, username, pubkey, sig, (err) => {
       if (err) {
         log(err);
         res.json({err: err});
+      } else {
+        res.json({err: null});
       }
-      res.json({err: null});
     });
   } else {
     log('token/username/pubkey not valid');
@@ -129,11 +128,10 @@ router.post('/login', (req, res, next) => {
 router.post('/auth_msg', (req, res, next) => {
   var tok = req.headers.authorization;
   var sender = req.body.sender;
-  var receiver = req.body.receiver;
+  var receiver = req.body.rec;
   var msg = req.body.msg;
 
   if (tok && sender && receiver && msg) {
-
     // validate received data and save the msg to 
     // receiver's db record for pushing it to client
     // the next time gets online
@@ -157,20 +155,14 @@ router.post('/auth_msg', (req, res, next) => {
 router.post('/auth_unread', (req, res, next) => {
   var tok = req.headers.authorization;
   var username = req.body.un;
-
   if (tok && username) {
-
-    // validate received data and save the msg to 
-    // receiver's db record for pushing it to client
-    // the next time gets online
+    // check for client's unread messages
     auth.check_unread(tok, username, (err, unread) => {
       if (err) {
         res.json({err: err});
       } 
       if (unread) {
         res.json({unread: unread});
-      } else {
-        res.json({unread: null});
       }
     });
   } else {

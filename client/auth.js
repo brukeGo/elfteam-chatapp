@@ -96,6 +96,26 @@ function gen_sign(data, cb) {
 }
 
 /**
+ * return locally saved token for sending to server
+ */
+
+function get_tok(cb) {
+  db.get('name', (err, username) => {
+    if (err) {
+      return cb(err.message, null);
+    } else {
+      db.get('tok', (err, token) => {
+        if (err) {
+          return cb(err.message, null);
+        } else {
+          return cb(null, {un: username, tok: token});
+        }
+      });
+    }
+  });
+}
+
+/**
  * delete locally saved token
  */
 
@@ -278,7 +298,6 @@ function verify_pubkey(pubkey, sig) {
 
 function get_frds(cb) {
   var frds;
-  var result = [];
   db.get('frd', (err, val) => {
     if (err) {
       return cb();
@@ -289,11 +308,10 @@ function get_frds(cb) {
       return cb(er.message, null);
     }
     if (frds.ls.length > 0) {
-      frds.ls.forEach((frd) => {
-        result.push({name: frd.name, pubkey: frd.pubkey});
-      });
-    }  
-    return cb(null, result);
+      return cb(null, frds.ls);
+    } else {
+      return cb();
+    }
   });
 }
 
@@ -308,7 +326,7 @@ function get_frd_pubkey(frd_username, cb) {
       return cb(err, null);
     }
     frds.forEach((frd) => {
-      if (frd.name === frd_username && frd.pubkey) {
+      if (frd.pubkey && frd.name === frd_username) {
         frd_pubkey = Buffer.from(frd.pubkey, encoding).toString();
       }
     });
@@ -407,30 +425,25 @@ function dec(cipher_text, cb) {
 
 function send_msg(msg, receiver, cb) {
   var d;
-  db.get('name', (err, username) => {
+  get_tok((err, result) => {
     if (err) {
-      return cb(err.message, null);
-    }
-    db.get('tok', (err, token) => {
+      return cb(err, null);
+    }  
+    enc(msg, receiver, (err, enc_dat) => {
       if (err) {
-        return cb(err.message, null);
+        return cb(err, null);
       }
-      enc(msg, receiver, (err, enc_dat) => {
+      req({
+        url: uri.msg,
+        headers: {authorization: result.tok},
+        form: {sender: result.un, rec: receiver, msg: enc_dat}
+      }, (err) => {
         if (err) {
           return cb(err, null);
+        } else {
+          d = new Date();
+          return cb(null, {un: result.un, time: `${d.getHours()}:${d.getMinutes()}`});
         }
-        req({
-          url: uri.msg,
-          headers: {authorization: token},
-          form: {sender: username, rec: receiver, msg: enc_dat}
-        }, (err) => {
-          if (err) {
-            return cb(err, null);
-          } else {
-            d = new Date();
-            return cb(null, {un: username, time: `${d.getHours()}:${d.getMinutes()}`});
-          }
-        });
       });
     });
   });
@@ -439,17 +452,17 @@ function send_msg(msg, receiver, cb) {
 /**
  * decrypt unread messages and store decrypted data in local db
  * for showing on frond-end. this data will be removed after client
- * logs out or close the application by another function
+ * logs out or closes the application by another function
  */
 
-function save_unread_list(unread_msgs, cb) {
-  var unread_msg;
+function dec_and_save_unread(unread_msgs, cb) {
+  var msgs;
   db.get('unread', (err, val) => {
     if (err) {
       return cb();
     }
     try {
-      unread_msg = JSON.parse(val);
+      msgs = JSON.parse(val);
     } catch(err) {
       return cb(err.message);
     }
@@ -461,8 +474,8 @@ function save_unread_list(unread_msgs, cb) {
           if (err) {
             return callback(err);
           } else {
-            unread_msg.ls.push({sender: unread.sender, msg: decrypted, time: unread.time});
-            db.put('unread', JSON.stringify(unread_msg), (err) => {
+            msgs.push({sender: unread.sender, msg: decrypted, time: unread.time});
+            db.put('unread', JSON.stringify(msgs), (err) => {
               if (err) {
                 return callback(err.message);
               } else {
@@ -487,50 +500,109 @@ function save_unread_list(unread_msgs, cb) {
  */
 
 function fetch_unread(cb) {
-  db.get('name', (err, username) => {
+  get_tok((err, result) => {
     if (err) {
-      return cb(err.message);
+      return cb(err);
     }
-    db.get('tok', (err, token) => {
+    req({url: uri.unread, headers: {authorization: result.tok}, form: {un: result.un}}, (err, res) => {
       if (err) {
-        return cb(err.message);
+        return cb(err);
       }
-      req({url: uri.unread, headers: {authorization: token}, form: {un: username}}, (err, res) => {
-        if (err) {
-          return cb(err);
-        }
-        if (res.unread) {
-          save_unread_list(res.unread, (err) => {
-            if (err) {
-              return cb(err);
-            } else {
-              console.log('unread messages saved (after fetch) to db successfully');
-              return cb();
-            }
-          });
-        }
-      });
+      if (res.unread) {
+        dec_and_save_unread(res.unread, (err) => {
+          if (err) {
+            return cb(err);
+          } else {
+            return cb();
+          }
+        });
+      }
     });
   });
 }
 
 /**
- * send friend's decrypted messages to ipc renderer 
- * for showing on frond-end
+ * return an array of unread messages
  */
 
-function show_unread(cb) {
-  var unread_msg;
+function get_unread(cb) {
+  var msgs;
   db.get('unread', (err, val) => {
     if (err) {
       return cb();
     }
     try {
-      unread_msg = JSON.parse(val);
+      msgs = JSON.parse(val);
     } catch(err) {
-      return cb(err.message);
+      return cb(err.message, null);
     }
-    return cb(null, unread_msg.ls);
+    if (msgs.length > 0) {
+      return cb(null, msgs);
+    } else {
+      return cb();
+    }
+  });
+}
+
+/**
+ * show decrypted messages
+ */
+
+function show_msg(frd_name, cb) {
+  var msgs;
+  var result = [];
+  db.get('unread', (err, val) => {
+    if (err) {
+      return cb();
+    }
+    try {
+      msgs = JSON.parse(val);
+    } catch(err) {
+      return cb(err.message, null);
+    }
+    if (msgs.length > 0) {
+      msgs.forEach((unread) => {
+        if (unread.sender === frd_name) {
+          result.push({msg: unread.msg, time: unread.time});
+          msgs.splice(msgs.indexOf(unread), 1);
+        }
+      });
+      db.put('unread', JSON.stringify(msgs), (err) => {
+        if (err) {
+          return cb(err.message, null);
+        }
+        return cb(null, result);
+      });
+    } else {
+      return cb();
+    }
+  });
+
+}
+
+/**
+ * remove friend's messages from unread array after
+ * showing to the user
+ */
+
+function clear_unread(frd_name, cb) {
+  get_unread((err, msgs) => {
+    if (err) {
+      return cb(err);
+    }
+    if (msgs) {
+      msgs.forEach((msg) => {
+        if (msg.sender === frd_name) {
+          msgs.splice(msgs.indexOf(msg), 1);
+        }
+      });
+    }
+    db.put('unread', JSON.stringify(msgs), (err) => {
+      if (err) {
+        return cb(err.message);
+      }
+      return cb();
+    });
   });
 }
 
@@ -543,6 +615,7 @@ module.exports = {
   get_frds: get_frds,
   send_msg: send_msg,
   fetch_unread: fetch_unread,
-  show_unread: show_unread
+  get_unread: get_unread,
+  show_msg: show_msg
 };
 

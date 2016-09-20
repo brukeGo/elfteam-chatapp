@@ -13,26 +13,35 @@ var msg_ul = document.getElementById('msg-list');
  * append a new friend to friend list
  */
 
-function append_frd_list(frd) {
-  var frd_btn = document.createElement('button');
-  //var badge = document.createElement('span');
-  frd_btn.className += 'list-group-item list-group-item-info';
-  //badge.className += 'badge';
-  //badge.id = 'unread-count';
-  frd_btn.style['text-align'] = 'center';
-  frd_btn.appendChild(document.createTextNode(frd.name));
-  frd_btn.value = frd.name;
-  /*
-  if (frd.msgs.length > 0) {
-    badge.appendChild(document.createTextNode(frd.msgs.length));
-    frd_btn.appendChild(badge);
+function append_frd_list(dat) {
+  var frd_btn, badge;
+  if (dat.frds) {
+    dat.frds.forEach((frd) => {
+      var count = 0;
+      frd_btn = document.createElement('button');
+      frd_btn.className += 'list-group-item list-group-item-info';
+      frd_btn.appendChild(document.createTextNode(frd.name));
+      frd_btn.value = frd.name;
+      if (dat.unread) {
+        dat.unread.forEach((message) => {
+          if (message.sender === frd.name) {
+            count += 1;
+          }
+        });
+        badge = document.createElement('span');
+        badge.className += 'badge';
+        badge.id = 'unread-count';
+        badge.appendChild(document.createTextNode(count));
+        frd_btn.appendChild(badge);
+      }
+      frd_btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        receiver.value = frd_btn.value;
+        ipc.send('show-msg', receiver.value);
+      });
+      frd_ls.appendChild(frd_btn);
+    });
   }
-  */
-  frd_btn.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    receiver.value = frd_btn.value;
-  });
-  frd_ls.appendChild(frd_btn);
   return;
 }
 
@@ -92,16 +101,11 @@ add_btn.addEventListener('click', (ev) => {
   ipc.send('load-addfrd');
 });
 
-// get friend list
 ipc.send('frd-ls');
 
 // show friend list
-ipc.on('frd-ls-success', (ev, frds) => {
-  if (frds) {
-    frds.forEach((frd) => {
-      append_frd_list(frd);
-    });
-  }
+ipc.on('frd-ls-success', (ev, dat) => {
+  append_frd_list(dat);
 });
 
 // send button click listener
@@ -120,14 +124,21 @@ ipc.on('send-msg-success', (ev, arg) => {
   }
 });
 
-ipc.send('show-unread');
-
 // show unread messages
-ipc.on('show-unread-success', (ev, unread) => {
-  if (unread) {
-    unread.forEach((message) => {
-      create_li_msg(message.sender, message.msg, message.time, false);
+ipc.on('show-msg-success', (ev, dat) => {
+  var badge = document.getElementById('unread-count');
+  var btns = document.getElementsByTagName('button');
+  if (dat && dat.msgs) {
+    dat.msgs.forEach((unread) => {
+      if (unread.msg && unread.time) {
+        create_li_msg(dat.sender, unread.msg, unread.time, false);
+      }
     });
+    for (var i = 0; i < btns.length; i += 1) {
+      if (btns[i].value === dat.sender && badge !== null) {
+        btns[i].removeChild(badge);
+      }
+    }
   }
 });
 

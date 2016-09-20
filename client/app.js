@@ -281,6 +281,7 @@ ipcMain.on('add-frd', (ev, dat) => {
 
 ipcMain.on('frd-ls', (ev) => {
   auth.get_frds((err, frds) => {
+    var dat = {};
     if (err) {
       showerr(err);
       if (chat_win !== null) {
@@ -288,7 +289,19 @@ ipcMain.on('frd-ls', (ev) => {
       }
     }
     if (frds && frds.length > 0) {
-      ev.sender.send('frd-ls-success', frds);
+      dat.frds = frds;
+      auth.get_unread((err, unread) => {
+        if (err) {
+          showerr(err);
+          if (chat_win !== null) {
+            chat_win.reload();
+          }
+        }
+        if (unread) {
+          dat.unread = unread;
+        }
+        ev.sender.send('frd-ls-success', dat);
+      });
     }
   });
 });
@@ -322,16 +335,18 @@ ipcMain.on('send-msg', (ev, arg) => {
  * show successfully decrypted messages
  */
 
-ipcMain.on('show-unread', (ev) => {
-  auth.show_unread((err, res) => {
-    if (err) {
-      showerr(err);
-      chat_win.reload();
-    }
-    if (res && res.length > 0) {
-      ev.sender.send('show-unread-success', res);
-    }
-  });
+ipcMain.on('show-msg', (ev, sender) => {
+  if (sender) {
+    auth.show_msg(sender, (err, res) => {
+      if (err) {
+        showerr(err);
+        chat_win.reload();
+      }
+      if (res.length && res.length > 0) {
+        ev.sender.send('show-msg-success', {sender: sender, msgs: res});
+      }
+    });
+  }
 });
 
 /**

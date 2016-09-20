@@ -109,7 +109,7 @@ function destroy_token(cb) {
 }
 
 /**
- * make a post request to a given options obj and return server response
+ * make a post request with a given options obj and return server response
  */
 
 function req(opts, cb) {

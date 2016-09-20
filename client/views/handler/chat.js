@@ -15,17 +15,19 @@ var msg_ul = document.getElementById('msg-list');
 
 function append_frd_list(frd) {
   var frd_btn = document.createElement('button');
-  var badge = document.createElement('span');
+  //var badge = document.createElement('span');
   frd_btn.className += 'list-group-item list-group-item-info';
-  badge.className += 'badge';
-  badge.id = 'unread-count';
+  //badge.className += 'badge';
+  //badge.id = 'unread-count';
   frd_btn.style['text-align'] = 'center';
   frd_btn.appendChild(document.createTextNode(frd.name));
   frd_btn.value = frd.name;
+  /*
   if (frd.msgs.length > 0) {
     badge.appendChild(document.createTextNode(frd.msgs.length));
     frd_btn.appendChild(badge);
   }
+  */
   frd_btn.addEventListener('click', (ev) => {
     ev.preventDefault();
     receiver.value = frd_btn.value;
@@ -118,18 +120,14 @@ ipc.on('send-msg-success', (ev, arg) => {
   }
 });
 
+ipc.send('show-unread');
+
 // show unread messages
-ipc.on('show-msg-success', (ev, arg) => {
-  var badge_c = document.getElementById('unread-count');
-  console.log(arg);
-  if (arg.sender && arg.msgs && arg.msgs.length > 0) {
-    arg.msgs.forEach((message) => {
-      create_li_msg(arg.sender, message.msg, message.time, false);
-      if (badge_c !== null) {
-        badge_c.style.display = 'none';
-      }
+ipc.on('show-unread-success', (ev, unread) => {
+  if (unread) {
+    unread.forEach((message) => {
+      create_li_msg(message.sender, message.msg, message.time, false);
     });
   }
 });
-
 

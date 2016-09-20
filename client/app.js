@@ -226,7 +226,7 @@ ipcMain.on('request-login', (ev, dat) => {
         showerr(err);
         login_win.reload();
       } else {
-        auth.check_unread((err) => {
+        auth.fetch_unread((err) => {
           if (err) {
             showerr(err);
             login_win.reload();
@@ -318,18 +318,20 @@ ipcMain.on('send-msg', (ev, arg) => {
   }
 });
 
-ipcMain.on('show-msg', (ev, frd_username) => {
-  if (frd_username) {
-    auth.show_msg(frd_username, (err, res) => {
-      if (err) {
-        showerr(err);
-        chat_win.reload();
-      }
-      if (res && res.length > 0) {
-        ev.sender.send('show-msg-success', {sender: frd_username, msgs: res});
-      }
-    });
-  }
+/**
+ * show successfully decrypted messages
+ */
+
+ipcMain.on('show-unread', (ev) => {
+  auth.show_unread((err, res) => {
+    if (err) {
+      showerr(err);
+      chat_win.reload();
+    }
+    if (res && res.length > 0) {
+      ev.sender.send('show-unread-success', res);
+    }
+  });
 });
 
 /**

@@ -2,10 +2,13 @@
 
 const path = require('path');
 const crypto = require('crypto');
-const fs = require('fs-extra');
+const fs = require('fs');
 const exec = require('child_process').execSync;
 const request = require('request');
 const levelup = require('levelup');
+const async = require('async');
+const rm = require('rimraf');
+const mkdirp = require('mkdirp');
 const tmp = path.join(__dirname, 'tmp');
 const privkey_path = path.join(tmp, 'priv.pem');
 const pubkey_path = path.join(tmp, 'pub.pem');
@@ -16,7 +19,7 @@ const uri = {
   msg: 'https://localhost.daplie.com:3761/auth_msg',
   unread: 'https://localhost.daplie.com:3761/auth_unread'
 };
-const encoding = 'base64';
+const encoding = 'base64'; // data encoding
 const alg = 'aes-256-cbc'; // encryption algorithm
 const hmac_alg = 'sha256'; // hmac algorithm
 
@@ -106,14 +109,37 @@ function destroy_token(cb) {
 }
 
 /**
+ * make a post request to a given options obj and return server response
+ */
+
+function req(opts, cb) {
+  var server_res;  
+  opts = Object.assign({rejectUnauthorized: true}, opts);
+  request.post(opts, (error, res, body) => {
+    if (error) {
+      console.log(`request-err: ${error}`);
+      return cb(error.message, null);
+    }
+    try {
+      server_res = JSON.parse(body);
+    } catch(err) {
+      return cb(err.message, null);
+    }
+    if (server_res.err) {
+      return cb(server_res.err, null);
+    } else {
+      return cb(null, server_res);
+    }
+  });
+}
+
+/**
  * send user's base64 encoded signed public key 
  * to server, after new account succssfully created. It
  * is a protected route.
  */
 
 function send_pubkey(username, token, cb) {
-  var server_res;
-
   db.get('pub', (err, pubkey) => {
     if (err) {
       return cb(err.message);
@@ -122,26 +148,17 @@ function send_pubkey(username, token, cb) {
       if (err) {
         return cb(err.message);
       }
-      request.post({
+      req({
         url: uri.reg_pubk,
-        rejectUnauthorized: true,
         headers: {authorization: token},
         form: {un: username, pubkey: Buffer.from(pubkey).toString(encoding), sig: pubkey_sig}
-      }, (error, res, body) => {
-        if (error) {
-          console.log(`request-err: ${error}`);
-          return cb(error.message);
+      }, (err) => {
+        if (err) {
+          return cb(err);
+        } else {
+          rm.sync(tmp);
+          return cb();
         }
-        try {
-          server_res = JSON.parse(body);
-        } catch(err) {
-          return cb(err.message);
-        }
-        if (server_res.err) {
-          return cb(server_res.err);
-        }
-        fs.removeSync(tmp);
-        return cb();
       });
     });
   });
@@ -154,28 +171,14 @@ function send_pubkey(username, token, cb) {
  */
 
 function register(username, passw, cb) {
-  var server_res;
-  request.post({
-    url: uri.reg,
-    rejectUnauthorized: true,
-    form: {un: username, pw: passw}
-  }, (error, res, body) => {
-    if (error) {
-      console.log(`request-err: ${error}`);
-      return cb(error.message);
-    }  
-    try {
-      server_res = JSON.parse(body);
-    } catch(err) {
-      return cb(err.message);
+  req({url: uri.reg, form: {un: username, pw: passw}}, (err, res) => {
+    if (err) {
+      return cb(err);
     }
-    if (server_res.err) {
-      return cb(server_res.err);
-    }
-    if (server_res.token) { 
+    if (res.token) { 
       try {
-        fs.removeSync(tmp);
-        fs.mkdirpSync(tmp);
+        rm.sync(tmp);
+        mkdirp.sync(tmp);
         gen_privkey();
         gen_pubkey();
         db.batch()
@@ -183,9 +186,10 @@ function register(username, passw, cb) {
           .put('priv', get_privkey())
           .put('pub', get_pubkey())
           .put('frd', JSON.stringify({ls: []}))
+          .put('unread', JSON.stringify({ls: []}))
           .write(() => {
             console.log(`${username} saved to db successfully`);
-            send_pubkey(username, server_res.token, (err) => {
+            send_pubkey(username, res.token, (err) => {
               if (err) {
                 console.log(err);
                 return cb(err);
@@ -207,32 +211,18 @@ function register(username, passw, cb) {
  */
 
 function login(usern, passw, cb) {
-  var server_res;
   gen_sign(passw, (err, sig) => {
     if (err) {
       return cb(err);
     }
-    request.post({
-      url: uri.login,
-      rejectUnauthorized: true,
-      form: {un: usern, pw: passw, pw_sig: sig}
-    }, (error, res, body) => {
-      if (error) {
-        console.log(`request-err: ${error}`);
-        return cb(error.message, null);
-      }
-      try {
-        server_res = JSON.parse(body);
-      } catch(err) {
-        return cb(err.message);
-      }
-      if (server_res.err) {
-        return cb(server_res.err, null);
+    req({url: uri.login, form: {un: usern, pw: passw, pw_sig: sig}}, (err, res) => {
+      if (err) {
+        return cb(err);
       }
       // successful authentication, server responded with a token
       // save it locally for the current session subsequent requests
-      if (server_res.token) {
-        db.put('tok', server_res.token, (err) => {
+      if (res.token) {
+        db.put('tok', res.token, (err) => {
           if (err) {
             return cb(err.message);
           }
@@ -260,7 +250,7 @@ function add_frd(frd_username, pubkey, cb) {
     } catch(er) {
       return cb(er.message);
     }
-    frds.ls.push({name: frd_username, pubkey: pubkey, msgs: []});
+    frds.ls.push({name: frd_username, pubkey: pubkey});
     db.put('frd', JSON.stringify(frds), (err) => {
       if (err) {
         return cb(err.message);
@@ -291,7 +281,7 @@ function get_frds(cb) {
   var result = [];
   db.get('frd', (err, val) => {
     if (err) {
-      return cb(null, null);
+      return cb();
     }
     try {
       frds = JSON.parse(val);
@@ -300,7 +290,7 @@ function get_frds(cb) {
     }
     if (frds.ls.length > 0) {
       frds.ls.forEach((frd) => {
-        result.push({name: frd.name, msgs: frd.msgs});
+        result.push({name: frd.name, pubkey: frd.pubkey});
       });
     }  
     return cb(null, result);
@@ -312,22 +302,17 @@ function get_frds(cb) {
  */
 
 function get_frd_pubkey(frd_username, cb) {
-  var frds;
-  db.get('frd', (err, val) => {
+  var frd_pubkey;
+  get_frds((err, frds) => {
     if (err) {
-      return cb(err.message, null);
+      return cb(err, null);
     }
-    try {
-      frds = JSON.parse(val);
-    } catch(er) {
-      return cb(er.message, null);
-    }
-    frds.ls.forEach((frd) => {
+    frds.forEach((frd) => {
       if (frd.name === frd_username && frd.pubkey) {
-        return cb(null, Buffer.from(frd.pubkey, encoding).toString());
+        frd_pubkey = Buffer.from(frd.pubkey, encoding).toString();
       }
     });
-    return cb(null, null);
+    return cb(null, frd_pubkey);
   });
 }
 
@@ -387,6 +372,7 @@ function dec(cipher_text, cb) {
   db.get('priv', (err, privkey) => {
     if (err) {
       return cb(err.message, null);
+      //throw err.message;
     }
     try {
       chunk = cipher_text.split('#');
@@ -420,36 +406,26 @@ function dec(cipher_text, cb) {
  */
 
 function send_msg(msg, receiver, cb) {
-  var d, server_res;
+  var d;
   db.get('name', (err, username) => {
     if (err) {
-      return cb(err.message);
+      return cb(err.message, null);
     }
     db.get('tok', (err, token) => {
       if (err) {
-        return cb(err.message);
+        return cb(err.message, null);
       }
       enc(msg, receiver, (err, enc_dat) => {
         if (err) {
-          return cb(err);
+          return cb(err, null);
         }
-        request.post({
+        req({
           url: uri.msg,
-          rejectUnauthorized: true,
           headers: {authorization: token},
           form: {sender: username, rec: receiver, msg: enc_dat}
-        }, (error, res, body) => {
-          if (error) {
-            console.log(`request-err: ${error}`);
-            return cb(error.message, null, null);
-          }
-          try {
-            server_res = JSON.parse(body);
-          } catch(err) {
-            return cb(err.message, null, null);
-          }
-          if (server_res.err) {
-            return cb(server_res.err, null, null);
+        }, (err) => {
+          if (err) {
+            return cb(err, null);
           } else {
             d = new Date();
             return cb(null, {un: username, time: `${d.getHours()}:${d.getMinutes()}`});
@@ -461,32 +437,47 @@ function send_msg(msg, receiver, cb) {
 }
 
 /**
- * parse list of unread messages
+ * decrypt unread messages and store decrypted data in local db
+ * for showing on frond-end. this data will be removed after client
+ * logs out or close the application by another function
  */
 
 function save_unread_list(unread_msgs, cb) {
-  var frds;
-  db.get('frd', (err, val) => {
+  var unread_msg;
+  db.get('unread', (err, val) => {
     if (err) {
-      return cb(err.message);
+      return cb();
     }
     try {
-      frds = JSON.parse(val);
-    } catch(er) {
-      return cb(er.message);
+      unread_msg = JSON.parse(val);
+    } catch(err) {
+      return cb(err.message);
     }
-    frds.ls.forEach((frd) => {
-      unread_msgs.forEach((unread_msg) => {
-        if (unread_msg.sender === frd.name) {
-          frd.msgs.push({msg: unread_msg.msg, time: unread_msg.time});
-        }
-      });
-    });
-    db.put('frd', JSON.stringify(frds), (err) => {
-      if (err) {
-        return cb(err.message);
+    async.each(unread_msgs, (unread, callback) => {
+      if (!unread.sender || !unread.msg) {
+        return callback('invalid unread message');
+      } else {
+        dec(unread.msg, (err, decrypted) => {
+          if (err) {
+            return callback(err);
+          } else {
+            unread_msg.ls.push({sender: unread.sender, msg: decrypted, time: unread.time});
+            db.put('unread', JSON.stringify(unread_msg), (err) => {
+              if (err) {
+                return callback(err.message);
+              } else {
+                return callback();
+              }
+            });
+          }
+        });
       }
-      return cb();
+    }, (err) => {
+      if (err) {
+        return cb(err);
+      } else {
+        return cb();
+      }
     });
   });
 }
@@ -495,8 +486,7 @@ function save_unread_list(unread_msgs, cb) {
  * request to get unread messages from server
  */
 
-function check_unread(cb) {
-  var server_res;
+function fetch_unread(cb) {
   db.get('name', (err, username) => {
     if (err) {
       return cb(err.message);
@@ -505,34 +495,21 @@ function check_unread(cb) {
       if (err) {
         return cb(err.message);
       }
-      request.post({
-        url: uri.unread,
-        rejectUnauthorized: true,
-        headers: {authorization: token},
-        form: {un: username}
-      }, (error, res, body) => {
-        if (error) {
-          console.log(`request-err: ${error}`);
-          return cb(error.message, null);
+      req({url: uri.unread, headers: {authorization: token}, form: {un: username}}, (err, res) => {
+        if (err) {
+          return cb(err);
         }
-        try {
-          server_res = JSON.parse(body);
-        } catch(err) {
-          return cb(err.message, null);
-        }
-        if (server_res.err) {
-          return cb(server_res.err, null);
-        }
-        if (server_res.unread) {
-          save_unread_list(server_res.unread, (err) => {
+        if (res.unread) {
+          save_unread_list(res.unread, (err) => {
             if (err) {
-              return cb(err, null);
+              return cb(err);
+            } else {
+              console.log('unread messages saved (after fetch) to db successfully');
+              return cb();
             }
-            return cb();
           });
         }
       });
-
     });
   });
 }
@@ -542,31 +519,18 @@ function check_unread(cb) {
  * for showing on frond-end
  */
 
-function show_msg(frd_username, cb) {
-  var dec_msgs = [];
-  var frds;
-  db.get('frd', (err, val) => {
+function show_unread(cb) {
+  var unread_msg;
+  db.get('unread', (err, val) => {
     if (err) {
-      return cb(err.message, null);
+      return cb();
     }
     try {
-      frds = JSON.parse(val);
-    } catch(er) {
-      return cb(er.message, null);
+      unread_msg = JSON.parse(val);
+    } catch(err) {
+      return cb(err.message);
     }
-    frds.ls.forEach((frd) => {
-      if (frd.name === frd_username && frd.msgs.length > 0) {
-        frd.msgs.forEach((message) => {
-          dec(message.msg, (err, decrypted) => {
-            if (err) {
-              return cb(err, null);
-            }
-            dec_msgs.push({msg: decrypted, time: message.time});
-          });
-        });
-      }
-    });
-    return cb(null, dec_msgs);
+    return cb(null, unread_msg.ls);
   });
 }
 
@@ -578,7 +542,7 @@ module.exports = {
   add_frd: add_frd,
   get_frds: get_frds,
   send_msg: send_msg,
-  check_unread: check_unread,
-  show_msg: show_msg
+  fetch_unread: fetch_unread,
+  show_unread: show_unread
 };
 

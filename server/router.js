@@ -171,6 +171,25 @@ router.post('/auth_unread', (req, res, next) => {
   }
 });
 
+/**
+ * log out the client and delete the saved token
+ */
+
+router.post('/auth_logout', (req, res, next) => {
+  var tok = req.headers.authorization;
+  var username = req.body.un;
+  if (tok && username) {
+    auth.logout(tok, username, (err) => {
+      if (err) {
+        log(err);
+        res.json({err: err});
+      } else {
+        res.json({err: null});
+      }
+    });
+  }
+});
+
 
 module.exports = router;
 

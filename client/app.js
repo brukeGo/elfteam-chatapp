@@ -126,9 +126,9 @@ function create_win() {
     if (addfrd_win !== null) {
       addfrd_win.close();
     }
-    auth.destroy_token((err) => {
+    auth.logout((err) => {
       if (err) {
-        console.log('destroy-tok-err: ', err);
+        console.log('logout-err: ', err);
         showerr(err);
       }
       chat_win = null;
@@ -281,7 +281,6 @@ ipcMain.on('add-frd', (ev, dat) => {
 
 ipcMain.on('frd-ls', (ev) => {
   auth.get_frds((err, frds) => {
-    var dat = {};
     if (err) {
       showerr(err);
       if (chat_win !== null) {
@@ -289,19 +288,7 @@ ipcMain.on('frd-ls', (ev) => {
       }
     }
     if (frds && frds.length > 0) {
-      dat.frds = frds;
-      auth.get_unread((err, unread) => {
-        if (err) {
-          showerr(err);
-          if (chat_win !== null) {
-            chat_win.reload();
-          }
-        }
-        if (unread) {
-          dat.unread = unread;
-        }
-        ev.sender.send('frd-ls-success', dat);
-      });
+      ev.sender.send('frd-ls-success', frds);
     }
   });
 });
@@ -332,21 +319,36 @@ ipcMain.on('send-msg', (ev, arg) => {
 });
 
 /**
- * show successfully decrypted messages
+ * check for unread messages in local db and
+ * return an array of successfully decrypted
+ * messages to ipc renderer for showing to
+ * the user
  */
 
-ipcMain.on('show-msg', (ev, sender) => {
-  if (sender) {
-    auth.show_msg(sender, (err, res) => {
-      if (err) {
-        showerr(err);
-        chat_win.reload();
-      }
-      if (res.length && res.length > 0) {
-        ev.sender.send('show-msg-success', {sender: sender, msgs: res});
-      }
-    });
-  }
+ipcMain.on('check-unread', (ev) => {    
+  auth.get_unread((err, msgs) => {    
+    if (err) {
+      showerr(err);
+      chat_win.reload();
+    }
+    if (msgs) {
+      ev.sender.send('check-unread-success', msgs);
+    }
+  });
+});
+
+/**
+ * logout event
+ */
+
+ipcMain.on('logout', () => {
+  auth.logout((err) => {
+    if (err) {
+      showerr(err);
+      chat_win.reload();
+    }
+    app.quit();
+  });
 });
 
 /**

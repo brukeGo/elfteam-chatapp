@@ -7,41 +7,39 @@ var frd_ls = document.getElementById('frd-ls');
 var receiver = document.getElementById('receiver');
 var msg = document.getElementById('msg-inp');
 var send_btn = document.getElementById('send-btn');
+var unread_btn = document.getElementById('unread-btn');
 var msg_ul = document.getElementById('msg-list');
+var logout_btn = document.getElementById('logout-btn');
 
 /**
  * append a new friend to friend list
  */
 
-function append_frd_list(dat) {
-  var frd_btn, badge;
-  if (dat.frds) {
-    dat.frds.forEach((frd) => {
-      var count = 0;
+function append_frd_list(frds) {
+  var frd_btn;
+    frds.forEach((frd) => {
       frd_btn = document.createElement('button');
       frd_btn.className += 'list-group-item list-group-item-info';
       frd_btn.appendChild(document.createTextNode(frd.name));
-      frd_btn.value = frd.name;
+      /*
       if (dat.unread) {
         dat.unread.forEach((message) => {
           if (message.sender === frd.name) {
             count += 1;
           }
         });
-        badge = document.createElement('span');
         badge.className += 'badge';
-        badge.id = 'unread-count';
+        badge.id = `${frd.name}-badge`;
         badge.appendChild(document.createTextNode(count));
         frd_btn.appendChild(badge);
       }
+      */
       frd_btn.addEventListener('click', (ev) => {
         ev.preventDefault();
-        receiver.value = frd_btn.value;
-        ipc.send('show-msg', receiver.value);
+        receiver.value = frd.name;
       });
       frd_ls.appendChild(frd_btn);
     });
-  }
   return;
 }
 
@@ -104,8 +102,10 @@ add_btn.addEventListener('click', (ev) => {
 ipc.send('frd-ls');
 
 // show friend list
-ipc.on('frd-ls-success', (ev, dat) => {
-  append_frd_list(dat);
+ipc.on('frd-ls-success', (ev, frds) => {
+  if (frds) {
+    append_frd_list(frds);
+  }
 });
 
 // send button click listener
@@ -124,21 +124,32 @@ ipc.on('send-msg-success', (ev, arg) => {
   }
 });
 
-// show unread messages
-ipc.on('show-msg-success', (ev, dat) => {
-  var badge = document.getElementById('unread-count');
-  var btns = document.getElementsByTagName('button');
-  if (dat && dat.msgs) {
-    dat.msgs.forEach((unread) => {
-      if (unread.msg && unread.time) {
-        create_li_msg(dat.sender, unread.msg, unread.time, false);
-      }
+ipc.send('check-unread');
+ipc.on('check-unread-success', (ev, msgs) => {
+  if (msgs && msgs.length) {
+    var badge = document.createElement('span');
+    badge.className += 'basge';
+    badge.appendChild(document.createTextNode(msgs.length));
+    unread_btn.appendChild(badge);
+    unread_btn.style.display = 'block';
+    unread_btn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      msgs.forEach((unread) => {
+        if (unread.sender && unread.msg && unread.time) {
+          create_li_msg(unread.sender, unread.msg, unread.time, false);
+          unread_btn.style.display = 'none';
+        }
+      });
     });
-    for (var i = 0; i < btns.length; i += 1) {
-      if (btns[i].value === dat.sender && badge !== null) {
-        btns[i].removeChild(badge);
-      }
-    }
   }
+});
+
+/**
+ * logout click listener
+ */
+
+logout_btn.addEventListener('click', (ev) => {
+  ev.preventDefault();
+  ipc.send('logout');
 });
 

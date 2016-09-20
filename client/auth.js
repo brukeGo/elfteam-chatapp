@@ -17,7 +17,8 @@ const uri = {
   reg_pubk: 'https://localhost.daplie.com:3761/register/auth_pubk',
   login: 'https://localhost.daplie.com:3761/login',
   msg: 'https://localhost.daplie.com:3761/auth_msg',
-  unread: 'https://localhost.daplie.com:3761/auth_unread'
+  unread: 'https://localhost.daplie.com:3761/auth_unread',
+  logout: 'https://localhost.daplie.com:3761/auth_logout'
 };
 const encoding = 'base64'; // data encoding
 const alg = 'aes-256-cbc'; // encryption algorithm
@@ -106,25 +107,12 @@ function get_tok(cb) {
     } else {
       db.get('tok', (err, token) => {
         if (err) {
-          return cb(err.message, null);
+          return cb();
         } else {
           return cb(null, {un: username, tok: token});
         }
       });
     }
-  });
-}
-
-/**
- * delete locally saved token
- */
-
-function destroy_token(cb) {
-  db.del('tok', (err) => {
-    if (err) {
-      return cb(err.message);
-    }
-    return cb();
   });
 }
 
@@ -474,7 +462,7 @@ function dec_and_save_unread(unread_msgs, cb) {
           if (err) {
             return callback(err);
           } else {
-            msgs.push({sender: unread.sender, msg: decrypted, time: unread.time});
+            msgs.ls.push({sender: unread.sender, msg: decrypted, time: unread.time});
             db.put('unread', JSON.stringify(msgs), (err) => {
               if (err) {
                 return callback(err.message);
@@ -522,33 +510,10 @@ function fetch_unread(cb) {
 }
 
 /**
- * return an array of unread messages
+ * return an array of decrypted unread messages
  */
 
 function get_unread(cb) {
-  var msgs;
-  db.get('unread', (err, val) => {
-    if (err) {
-      return cb();
-    }
-    try {
-      msgs = JSON.parse(val);
-    } catch(err) {
-      return cb(err.message, null);
-    }
-    if (msgs.length > 0) {
-      return cb(null, msgs);
-    } else {
-      return cb();
-    }
-  });
-}
-
-/**
- * show decrypted messages
- */
-
-function show_msg(frd_name, cb) {
   var msgs;
   var result = [];
   db.get('unread', (err, val) => {
@@ -560,62 +525,65 @@ function show_msg(frd_name, cb) {
     } catch(err) {
       return cb(err.message, null);
     }
-    if (msgs.length > 0) {
-      msgs.forEach((unread) => {
-        if (unread.sender === frd_name) {
-          result.push({msg: unread.msg, time: unread.time});
-          msgs.splice(msgs.indexOf(unread), 1);
-        }
-      });
+    if (msgs.ls.length > 0) {
+      result = msgs.ls;
+      msgs.ls.splice(0, msgs.ls.length);
       db.put('unread', JSON.stringify(msgs), (err) => {
         if (err) {
           return cb(err.message, null);
         }
-        return cb(null, result);
+        db.get('unread', (err, val) => {
+          if (err) {
+            throw err;
+          }
+          console.log('updated-unread:', JSON.parse(val));
+          return cb(null, result);
+        });
       });
     } else {
       return cb();
     }
   });
-
 }
 
 /**
- * remove friend's messages from unread array after
- * showing to the user
+ * log out of current session, token is removed
+ * from both server and local db
  */
 
-function clear_unread(frd_name, cb) {
-  get_unread((err, msgs) => {
+function logout(cb) {
+  get_tok((err, result) => {
     if (err) {
       return cb(err);
     }
-    if (msgs) {
-      msgs.forEach((msg) => {
-        if (msg.sender === frd_name) {
-          msgs.splice(msgs.indexOf(msg), 1);
+    if (result && result.tok && result.un) {
+      req({url: uri.logout, headers: {authorization: result.tok}, form: {un: result.un}}, (err) => {
+        if (err) {
+          return cb(err);
+        } else {
+          db.del('tok', (err) => {
+            if (err) {
+              return cb();
+            }
+            return cb();
+          });
         }
       });
-    }
-    db.put('unread', JSON.stringify(msgs), (err) => {
-      if (err) {
-        return cb(err.message);
-      }
+    } else {
       return cb();
-    });
+    }
   });
 }
 
 module.exports = {
   register: register,
   login: login,
-  destroy_token: destroy_token,
   verify_pubkey: verify_pubkey,
   add_frd: add_frd,
   get_frds: get_frds,
   send_msg: send_msg,
   fetch_unread: fetch_unread,
   get_unread: get_unread,
-  show_msg: show_msg
+  logout: logout
 };
 

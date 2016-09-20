@@ -223,7 +223,6 @@ function login(username, passw, passw_sig, cb) {
       }
 
       if (valid) {
-        log(`${username} logged in successfully`);
         tok = gen_jwt(username);
         update_user(username, {'token': tok}, (err) => {
           if (err) {
@@ -290,8 +289,8 @@ function check_unread(token, username, cb) {
         }
         if (user.unread) {
           unread_msgs = user.unread;
-          user.unread = [];
-          update_user(username, user, (err) => {   
+          //user.unread.splice(0, user.unread.length);
+          update_user(username, user, (err) => {  
             if (err) {
               log(err);
               return cb(err, null);
@@ -306,11 +305,44 @@ function check_unread(token, username, cb) {
   });
 }
 
+/**
+ * log out and remove user's token from db
+ */
+
+function logout(token, username, cb) {
+  validate_token(token, username, (err, valid) => {
+    if (err) {
+      return cb(err);
+    }
+    if (valid) {
+      find_user(username, (err, user) => {
+        if (err) {
+          return cb(err);
+        }
+        if (user.token) {
+          user.token = null;
+          update_user(username, user, (err) => {  
+            if (err) {
+              log(err);
+              return cb(err);
+            }
+            return cb();
+          });
+        }
+      });
+    } else {
+      return cb('username/token not valid');
+    }
+  });
+}
+
+
 module.exports = {
   register: register,
   save_pubkey: save_pubkey,
   login: login,
   search: search,
   handle_msg: handle_msg,
-  check_unread: check_unread
+  check_unread: check_unread,
+  logout: logout
 };

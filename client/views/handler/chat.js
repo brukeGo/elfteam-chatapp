@@ -7,7 +7,6 @@ var frd_ls = document.getElementById('frd-ls');
 var receiver = document.getElementById('receiver');
 var msg = document.getElementById('msg-inp');
 var send_btn = document.getElementById('send-btn');
-var unread_btn = document.getElementById('unread-btn');
 var msg_ul = document.getElementById('msg-list');
 var logout_btn = document.getElementById('logout-btn');
 
@@ -126,20 +125,26 @@ ipc.on('send-msg-success', (ev, arg) => {
 
 ipc.send('check-unread');
 ipc.on('check-unread-success', (ev, msgs) => {
+  console.log(msgs);
   if (msgs && msgs.length) {
     var badge = document.createElement('span');
-    badge.className += 'basge';
+    var unread_btn = document.getElementById('unread-btn');
+    badge.className += 'badge';
     badge.appendChild(document.createTextNode(msgs.length));
     unread_btn.appendChild(badge);
-    unread_btn.style.display = 'block';
+    unread_btn.style.display = 'inline-block';
     unread_btn.addEventListener('click', (ev) => {
       ev.preventDefault();
       msgs.forEach((unread) => {
         if (unread.sender && unread.msg && unread.time) {
           create_li_msg(unread.sender, unread.msg, unread.time, false);
-          unread_btn.style.display = 'none';
         }
       });
+      if (unread_btn !== null && badge !== null) {
+        unread_btn.removeChild(badge);
+        unread_btn.style.display = 'none';
+        ipc.send('clear-unread');
+      }
     });
   }
 });

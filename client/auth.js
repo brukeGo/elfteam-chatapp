@@ -514,9 +514,9 @@ function fetch_unread(cb) {
  */
 
 function get_unread(cb) {
-  var msgs;
-  var result = [];
   db.get('unread', (err, val) => {
+    var msgs;
+    var result = {};
     if (err) {
       return cb();
     }
@@ -525,23 +525,54 @@ function get_unread(cb) {
     } catch(err) {
       return cb(err.message, null);
     }
+    console.log('unread-msgs:', msgs);
     if (msgs.ls.length > 0) {
-      result = msgs.ls;
-      msgs.ls.splice(0, msgs.ls.length);
+      result = msgs;
+      //msgs.ls.splice(0, msgs.ls.length);
       db.put('unread', JSON.stringify(msgs), (err) => {
         if (err) {
           return cb(err.message, null);
+        }
+        console.log('result:', result);
+        return cb(null, result.ls);
+      });
+    } else {
+      return cb();
+    }
+  });
+}
+
+/**
+ * remove unread messages from local db after showing to the client
+ */
+
+function clear_unread(cb) {
+  db.get('unread', (err, val) => {
+    var msgs;
+    if (err) {
+      return cb();
+    }
+    try {
+      msgs = JSON.parse(val);
+    } catch(err) {
+      return cb(err.message, null);
+    }
+    console.log('clearunreadfunc-msgs:', msgs);
+    if (msgs.ls.length > 0) {
+      msgs.ls.splice(0, msgs.ls.length);
+      db.put('unread', JSON.stringify(msgs), (err) => {
+        if (err) {
+          return cb(err.message);
         }
         db.get('unread', (err, val) => {
           if (err) {
             throw err;
           }
-          console.log('updated-unread:', JSON.parse(val));
-          return cb(null, result);
+          console.log('updated-unread-clear-func:', JSON.parse(val));
+          return cb();
         });
       });
-    } else {
-      return cb();
+
     }
   });
 }
@@ -584,6 +615,7 @@ module.exports = {
   send_msg: send_msg,
   fetch_unread: fetch_unread,
   get_unread: get_unread,
+  clear_unread: clear_unread,
   logout: logout
 };
 

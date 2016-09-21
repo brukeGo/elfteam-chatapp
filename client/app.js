@@ -337,6 +337,15 @@ ipcMain.on('check-unread', (ev) => {
   });
 });
 
+ipcMain.on('clear-unread', () => {
+  auth.clear_unread((err) => {
+    if (err) {
+      showerr(err);
+      chat_win.reload();
+    }
+  });
+});
+
 /**
  * logout event
  */

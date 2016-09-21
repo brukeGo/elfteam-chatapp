@@ -157,7 +157,7 @@ router.post('/auth_unread', (req, res, next) => {
   var username = req.body.un;
   if (tok && username) {
     // check for client's unread messages
-    auth.check_unread(tok, username, (err, unread) => {
+    auth.get_unread(tok, username, (err, unread) => {
       if (err) {
         res.json({err: err});
       } 
@@ -170,6 +170,25 @@ router.post('/auth_unread', (req, res, next) => {
   } else {
     log('token/username not valid');
     res.json({err: 'token/username not valid'});
+  }
+});
+
+/**
+ * handle post request to clear client's list of unread messages
+ */
+
+router.post('/auth_clear_unread', (req, res, next) => {
+  var tok = req.headers.authorization;
+  var username = req.body.un;
+  if (tok && username) {
+    auth.clear_unread(tok, username, (err) => {
+      if (err) {
+        log(err);
+        res.json({err: err});
+      } else {
+        res.json({err: null});
+      }
+    });
   }
 });
 

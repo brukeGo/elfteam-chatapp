@@ -18,6 +18,7 @@ const uri = {
   login: 'https://localhost.daplie.com:3761/login',
   msg: 'https://localhost.daplie.com:3761/auth_msg',
   unread: 'https://localhost.daplie.com:3761/auth_unread',
+  clear_unread: 'https://localhost.daplie.com:3761/auth_clear_unread',
   logout: 'https://localhost.daplie.com:3761/auth_logout'
 };
 const encoding = 'base64'; // data encoding
@@ -527,7 +528,6 @@ function get_unread(cb) {
     } catch(err) {
       return cb(err.message, null);
     }
-    console.log('unread-msgs-ls:', msgs.ls);
     if (msgs.ls.length > 0) {
       return cb(null, msgs.ls);
     } else {
@@ -541,33 +541,43 @@ function get_unread(cb) {
  */
 
 function clear_unread(cb) {
-  db.get('unread', (err, val) => {
-    var msgs;
+  get_tok((err, result) => {
     if (err) {
+      return cb(err);
+    }
+    if (result && result.tok && result.un) {
+      req({url: uri.clear_unread, headers: {authorization: result.tok}, form: {un: result.un}}, (err) => {
+        if (err) {
+          return cb(err);
+        } else {
+          db.get('unread', (err, val) => {
+            var msgs;
+            if (err) {
+              return cb();
+            }
+            try {
+              msgs = JSON.parse(val);
+            } catch(err) {
+              return cb(err.message, null);
+            }
+            if (msgs.ls.length > 0) {
+              msgs.ls.splice(0, msgs.ls.length);
+              db.put('unread', JSON.stringify(msgs), (err) => {
+                if (err) {
+                  return cb(err.message);
+                }
+                return cb();
+              });
+            } else {
+              return cb();
+            }
+          });
+        }
+      });
+    } else {
       return cb();
     }
-    try {
-      msgs = JSON.parse(val);
-    } catch(err) {
-      return cb(err.message, null);
-    }
-    if (msgs.ls.length > 0) {
-      msgs.ls.splice(0, msgs.ls.length);
-      db.put('unread', JSON.stringify(msgs), (err) => {
-        if (err) {
-          return cb(err.message);
-        }
-        db.get('unread', (err, val) => {
-          if (err) {
-            throw err;
-          }
-          console.log('unread-clear-updated:', JSON.parse(val));
-          return cb();
-        });
-      });
-
-    }
-  });
+  });  
 }
 
 /**

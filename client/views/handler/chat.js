@@ -16,16 +16,16 @@ var logout_btn = document.getElementById('logout-btn');
 
 function append_frd_list(frds) {
   var frd_btn;
-    frds.forEach((frd) => {
-      frd_btn = document.createElement('button');
-      frd_btn.className += 'list-group-item list-group-item-info';
-      frd_btn.appendChild(document.createTextNode(frd.name));
-      frd_btn.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        receiver.value = frd.name;
-      });
-      frd_ls.appendChild(frd_btn);
+  frds.forEach((frd) => {
+    frd_btn = document.createElement('button');
+    frd_btn.className += 'list-group-item list-group-item-info';
+    frd_btn.appendChild(document.createTextNode(frd.name));
+    frd_btn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      receiver.value = frd.name;
     });
+    frd_ls.appendChild(frd_btn);
+  });
   return;
 }
 
@@ -112,7 +112,6 @@ ipc.on('send-msg-success', (ev, arg) => {
 
 ipc.send('check-unread');
 ipc.on('check-unread-success', (ev, msgs) => {
-  console.log(msgs);
   if (msgs && msgs.length) {
     var badge = document.createElement('span');
     var unread_btn = document.getElementById('unread-btn');

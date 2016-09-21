@@ -115,7 +115,6 @@ function register(username, passw, cb) {
           log(err.message);
           return cb(err.message, null);
         }
-        log(`${username} saved successfully`);
         return cb(null, tok);
       });
     } else {
@@ -230,8 +229,7 @@ function handle_msg(tok, sender, receiver, msg, cb) {
  * check client's unread messages
  */
 
-function check_unread(token, username, cb) {
-  var unread_msgs;
+function get_unread(token, username, cb) {
   validate_token(token, username, (err, valid) => {
     if (err) {
       return cb(err, null);
@@ -242,14 +240,39 @@ function check_unread(token, username, cb) {
           return cb(err.message, null);
         }
         if (user.unread && user.unread.length > 0) {
-          unread_msgs = user.unread;
+          return cb(null, user.unread);
+        } else {
+          return cb();
+        }
+      });
+    } else {
+      return cb('username/token not valid');
+    }
+  });
+}
+
+/**
+ * clear client's list of unread messages
+ */
+
+function clear_unread(token, username, cb) {
+  validate_token(token, username, (err, valid) => {
+    if (err) {
+      return cb(err);
+    }
+    if (valid) {
+      db.get(username, (err, user) => {
+        if (err) {
+          return cb(err.message);
+        }
+        if (user.unread && user.unread.length > 0) {
           user.unread.splice(0, user.unread.length);
           db.put(username, user, (err) => {
             if (err) {
               log(err);
-              return cb(err, null);
+              return cb(err);
             }
-            return cb(null, unread_msgs);
+            return cb();
           });
         } else {
           return cb();
@@ -275,34 +298,28 @@ function logout(token, username, cb) {
         if (err) {
           return cb(err.message);
         }
-          user = Object.assign(user, {token: null});
-          db.put(username, user, (err) => {  
-            if (err) {
-              log(err);
-              return cb(err.message);
-            }
-            return cb();
-          });
+        user = Object.assign(user, {token: null});
+        db.put(username, user, (err) => {  
+          if (err) {
+            log(err);
+            return cb(err.message);
+          }
+          return cb();
+        });
       });
     } else {
       return cb('username/token not valid');
     }
   });
 }
-/*
-db.get('alice', (err, alc) => {
-  if (err) {
-    console.log(err);
-  }
-  console.log(alc);
-});
-*/
+
 module.exports = {
   register: register,
   save_pubkey: save_pubkey,
   login: login,
   search: search,
   handle_msg: handle_msg,
-  check_unread: check_unread,
+  get_unread: get_unread,
+  clear_unread: clear_unread,
   logout: logout
 };

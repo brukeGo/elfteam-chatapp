@@ -328,7 +328,6 @@ ipcMain.on('send-msg', (ev, arg) => {
         }
       }
       if (res.un && res.time) {
-        console.log('message sent successfully');
         ev.sender.send('send-msg-success', {
           un: res.un,
           msg: arg.msg,

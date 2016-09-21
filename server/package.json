@@ -22,7 +22,6 @@
   "homepage": "https://github.com/mawni/elfpm#readme",
   "dependencies": {
     "body-parser": "^1.15.2",
-    "deep-assign": "^2.0.0",
     "ejs": "^2.5.2",
     "express": "^4.14.0",
     "helmet": "^2.2.0",

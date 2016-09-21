@@ -2,11 +2,6 @@
 
 const electron = require('electron');
 const ipc = electron.ipcRenderer;
-
-/**
- * get document elements by their ids
- */
-
 var user_in = document.getElementById('usern');
 var pass_in = document.getElementById('passw');
 var login_btn = document.getElementById('login-btn');

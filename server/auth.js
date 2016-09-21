@@ -7,59 +7,14 @@
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const levelup = require('levelup');
-const assign = require('deep-assign');
 const crypto = require('crypto');
 const encoding = 'base64';
 const jwtkey = crypto.randomBytes(256).toString(encoding);
 
-var db = levelup(path.join(__dirname, 'db'));
+var db = levelup(path.join(__dirname, 'db'), {valueEncoding: 'json'});
 
 function log(info) {
   console.log(`elfpm-server: ${info}`);
-}
-
-/**
- * find user in db
- */
-
-function find_user(username, cb) {
-  var user;
-  db.get(username, (err, record) => {
-    if (err) {
-      return cb(err.message, null);
-    } else {
-      try {
-        user = JSON.parse(record);
-      } catch(ex) {
-        return cb(ex.message, null);
-      }
-      return cb(null, user);
-    }
-  });
-}
-
-/**
- * update user with given key/value item (get/put)
- */
-
-function update_user(username, item, cb) {
-  find_user(username, (err, user) => {
-    if (err) {
-      return cb(err);
-    }
-    if (user) {
-      user = assign(user, item);
-      db.put(username, JSON.stringify(user), (err) => {
-        if (err) {
-          return cb(err.message);
-        } else {
-          return cb();
-        }
-      });
-    } else {
-      return cb(`${username} not found.`);
-    }
-  });
 }
 
 /**
@@ -68,9 +23,9 @@ function update_user(username, item, cb) {
  */
 
 function search(username, cb) {
-  find_user(username, (err, user) => {
+  db.get(username, (err, user) => {
     if (err) {
-      return cb(err);
+      return cb(err.message);
     }
     if (user.pubkey && user.sig) {
       return cb(null, {
@@ -125,12 +80,10 @@ function validate_token(token, username, cb) {
   if (!decoded || !decoded.nam) {    
     return cb('token not valid', false);
   } else {
-    find_user(username, (err, user) => {
+    db.get(username, (err, user) => {
       if (err) {
-        log(err);
-        return cb(err, false);
+        return cb(err.message);
       }
-
       // check if user's stored token matches the sent one from client
       // and also username matches token's payload name
       return cb(null, username === decoded.nam && user.token === token);
@@ -148,16 +101,16 @@ function validate_token(token, username, cb) {
 function register(username, passw, cb) {
   var tok;
   // make sure username is unique
-  find_user(username, (err) => {
+  db.get(username, (err) => {
     if (err) {
       // username is unique, generate jwt for register
       // authentication and save it to db
       tok = gen_jwt(username);
-      db.put(username, JSON.stringify({
-        'password': passw,
-        'token': tok,
-        'unread': []
-      }), (err) => {
+      db.put(username, {
+        password: passw,
+        token: tok,
+        unread: []
+      }, (err) => {
         if (err) {
           log(err.message);
           return cb(err.message, null);
@@ -184,12 +137,17 @@ function save_pubkey(token, username, pubkey, sig, cb) {
     // if jwt is valid, delete register token (for login we generate new token),
     // then save user's public key and its signature to db
     if (valid) {
-      update_user(username, {'token': null, 'pubkey': pubkey, 'sig': sig}, (err) => {    
+      db.get(username, (err, user) => {
         if (err) {
-          log(err);
-          return cb(err);
+          return cb(err.message);
         }
-        return cb();
+        user = Object.assign(user, {token: null, pubkey: pubkey, sig: sig});
+        db.put(username, user, (err) => {
+          if (err) {
+            return cb(err.message);
+          }
+          return cb();
+        });
       });
     } else {
       return cb('username/token not valid');
@@ -202,37 +160,34 @@ function save_pubkey(token, username, pubkey, sig, cb) {
  */
 
 function login(username, passw, passw_sig, cb) {
-  const verify = crypto.createVerify('RSA-SHA256');
+  const veri = crypto.createVerify('RSA-SHA256');
   var tok, valid;
-
-  find_user(username, (error, user) => {
-    if (error) {
-      log(error);
-      return cb(error, null);
+  db.get(username, (err, user) => {
+    if (err) {
+      return cb(err.message);
     }
     if (user.password === passw && user.pubkey) {
       try {
-        verify.write(passw);
-        verify.end();
-
+        veri.write(passw);
+        veri.end();
         // verify password and its signature, if successful
         // generate jwt, save it to db and send it to client
-        valid = verify.verify(Buffer.from(user.pubkey, encoding).toString(), passw_sig, encoding);
+        valid = veri.verify(Buffer.from(user.pubkey, encoding).toString(), passw_sig, encoding);
       } catch(err) {
         return cb(err.message, null);
       }
-
       if (valid) {
         tok = gen_jwt(username);
-        update_user(username, {'token': tok}, (err) => {
+        user = Object.assign(user, {token: tok});
+        db.put(username, user, (err) => {
           if (err) {
             log(err);
-            return cb(err, null);
+            return cb(err.message, null);
           }
           return cb(null, tok);
         });
       } else {
-        return cb('err: password/signature not valid', null);
+        return cb('error: password/signature not valid', null);
       }
     } else {  
       return cb('err: password/signature not valid', null);
@@ -251,17 +206,16 @@ function handle_msg(tok, sender, receiver, msg, cb) {
       return cb(err);
     }
     if (valid) {
-      // find the receiver in db and save the msg
-      find_user(receiver, (err, user) => {
+      db.get(receiver, (err, user) => {
         if (err) {
-          return cb(err);
+          return cb(err.message);
         }
         d = new Date(); 
         user.unread.push({sender: sender, msg: msg, time: `${d.getHours()}:${d.getMinutes()}`});
-        update_user(receiver, user, (err) => {   
+        db.put(receiver, user, (err) => {   
           if (err) {
             log(err);
-            return cb(err);
+            return cb(err).message;
           }
           return cb();
         });
@@ -283,24 +237,26 @@ function check_unread(token, username, cb) {
       return cb(err, null);
     }
     if (valid) {
-      find_user(username, (err, user) => {
+      db.get(username, (err, user) => {
         if (err) {
-          return cb(err, null);
+          return cb(err.message, null);
         }
-        if (user.unread) {
+        if (user.unread && user.unread.length > 0) {
           unread_msgs = user.unread;
-          //user.unread.splice(0, user.unread.length);
-          update_user(username, user, (err) => {  
+          user.unread.splice(0, user.unread.length);
+          db.put(username, user, (err) => {
             if (err) {
               log(err);
               return cb(err, null);
             }
             return cb(null, unread_msgs);
           });
+        } else {
+          return cb();
         }
       });
     } else {
-      return cb('username/token not valid', null);
+      return cb('username/token not valid');
     }
   });
 }
@@ -315,28 +271,32 @@ function logout(token, username, cb) {
       return cb(err);
     }
     if (valid) {
-      find_user(username, (err, user) => {
+      db.get(username, (err, user) => {
         if (err) {
-          return cb(err);
+          return cb(err.message);
         }
-        if (user.token) {
-          user.token = null;
-          update_user(username, user, (err) => {  
+          user = Object.assign(user, {token: null});
+          db.put(username, user, (err) => {  
             if (err) {
               log(err);
-              return cb(err);
+              return cb(err.message);
             }
             return cb();
           });
-        }
       });
     } else {
       return cb('username/token not valid');
     }
   });
 }
-
-
+/*
+db.get('alice', (err, alc) => {
+  if (err) {
+    console.log(err);
+  }
+  console.log(alc);
+});
+*/
 module.exports = {
   register: register,
   save_pubkey: save_pubkey,

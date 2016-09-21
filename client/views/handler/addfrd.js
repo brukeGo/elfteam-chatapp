@@ -3,11 +3,6 @@
 const electron = require('electron');
 const {shell} = electron;
 const ipc = electron.ipcRenderer;
-
-/**
- * get document elements by their ids
- */
-
 var username = document.getElementById('usern');
 var pubkey = document.getElementById('pubkey');
 var sig = document.getElementById('sig');

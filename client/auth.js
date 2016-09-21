@@ -103,7 +103,7 @@ function gen_sign(data, cb) {
 function get_tok(cb) {
   db.get('name', (err, username) => {
     if (err) {
-      return cb(err.message, null);
+      return cb(err.message);
     } else {
       db.get('tok', (err, token) => {
         if (err) {
@@ -233,8 +233,9 @@ function login(usern, passw, cb) {
         db.put('tok', res.token, (err) => {
           if (err) {
             return cb(err.message);
+          } else {
+            return cb();
           }
-          return cb();
         });
       } else {
         return cb('err: no authorization token');
@@ -504,6 +505,8 @@ function fetch_unread(cb) {
             return cb();
           }
         });
+      } else {
+        return cb();
       }
     });
   });
@@ -516,7 +519,6 @@ function fetch_unread(cb) {
 function get_unread(cb) {
   db.get('unread', (err, val) => {
     var msgs;
-    var result = {};
     if (err) {
       return cb();
     }
@@ -525,17 +527,9 @@ function get_unread(cb) {
     } catch(err) {
       return cb(err.message, null);
     }
-    console.log('unread-msgs:', msgs);
+    console.log('unread-msgs-ls:', msgs.ls);
     if (msgs.ls.length > 0) {
-      result = msgs;
-      //msgs.ls.splice(0, msgs.ls.length);
-      db.put('unread', JSON.stringify(msgs), (err) => {
-        if (err) {
-          return cb(err.message, null);
-        }
-        console.log('result:', result);
-        return cb(null, result.ls);
-      });
+      return cb(null, msgs.ls);
     } else {
       return cb();
     }
@@ -557,7 +551,6 @@ function clear_unread(cb) {
     } catch(err) {
       return cb(err.message, null);
     }
-    console.log('clearunreadfunc-msgs:', msgs);
     if (msgs.ls.length > 0) {
       msgs.ls.splice(0, msgs.ls.length);
       db.put('unread', JSON.stringify(msgs), (err) => {
@@ -568,7 +561,7 @@ function clear_unread(cb) {
           if (err) {
             throw err;
           }
-          console.log('updated-unread-clear-func:', JSON.parse(val));
+          console.log('unread-clear-updated:', JSON.parse(val));
           return cb();
         });
       });

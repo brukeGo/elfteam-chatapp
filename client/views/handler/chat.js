@@ -20,19 +20,6 @@ function append_frd_list(frds) {
       frd_btn = document.createElement('button');
       frd_btn.className += 'list-group-item list-group-item-info';
       frd_btn.appendChild(document.createTextNode(frd.name));
-      /*
-      if (dat.unread) {
-        dat.unread.forEach((message) => {
-          if (message.sender === frd.name) {
-            count += 1;
-          }
-        });
-        badge.className += 'badge';
-        badge.id = `${frd.name}-badge`;
-        badge.appendChild(document.createTextNode(count));
-        frd_btn.appendChild(badge);
-      }
-      */
       frd_btn.addEventListener('click', (ev) => {
         ev.preventDefault();
         receiver.value = frd.name;

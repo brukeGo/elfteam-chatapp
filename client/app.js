@@ -90,8 +90,6 @@ function create_win() {
     icon: iconpath,
     show: false
   });
-  reg_win.loadURL(reg_index);
-  reg_win.webContents.openDevTools();
   reg_win.on('closed', () => {
     reg_win = null;
   });
@@ -105,8 +103,6 @@ function create_win() {
     icon: iconpath,
     show: false
   });
-  addfrd_win.loadURL(addfrd_index);
-  addfrd_win.webContents.openDevTools();
   addfrd_win.on('closed', () => {
     addfrd_win = null;
   });
@@ -120,8 +116,6 @@ function create_win() {
     icon: iconpath,
     show: false
   });
-  chat_win.loadURL(chat_index);
-  chat_win.webContents.openDevTools();
   chat_win.on('closed', () => {
     if (addfrd_win !== null) {
       addfrd_win.close();
@@ -135,6 +129,23 @@ function create_win() {
       app.quit();
     });
   });  
+}
+
+/**
+ * load chat window
+ */
+
+function load_chat() {    
+  auth.fetch_unread((err) => {
+    if (err) {
+      showerr(err);
+      login_win.reload();
+    } else {
+      chat_win.loadURL(chat_index);
+      chat_win.webContents.openDevTools();
+      chat_win.show();
+    }
+  });
 }
 
 app.on('ready', create_win);
@@ -156,6 +167,26 @@ app.on('activate', () => {
 });
 
 /**
+ * load register (create account) window
+ */
+
+ipcMain.on('load-reg', () => {
+  reg_win.loadURL(reg_index);
+  reg_win.webContents.openDevTools();
+  reg_win.show();
+});
+
+/**
+ * load add friend window
+ */
+
+ipcMain.on('load-addfrd', () => {
+  addfrd_win.loadURL(addfrd_index);
+  addfrd_win.webContents.openDevTools();
+  addfrd_win.show();
+});
+
+/**
  * reload register window on error
  */
 
@@ -174,20 +205,21 @@ ipcMain.on('login-err', (event, err) => {
 });
 
 /**
+ * reload add friend window on error
+ */
+
+ipcMain.on('addfrd-err', (event, err) => {
+  showerr(err);
+  addfrd_win.reload();
+});
+
+/**
  * reload chat window on I/O error
  */
 
 ipcMain.on('chat-err', (event, err) => {
   showerr(err);
   chat_win.reload();
-});
-
-/**
- * load register (create account) window
- */
-
-ipcMain.on('load-reg', () => {
-  reg_win.show();
 });
 
 /**
@@ -226,26 +258,15 @@ ipcMain.on('request-login', (ev, dat) => {
         showerr(err);
         login_win.reload();
       } else {
-        auth.fetch_unread((err) => {
-          if (err) {
-            showerr(err);
-            login_win.reload();
-          } else {
-            if (login_win !== null) {
-              login_win.close();
-            }
-            chat_win.show();
-          }
-        });
+        load_chat();
+        if (login_win !== null) {
+          login_win.close();
+        }
       }
     });
   } else {
     showerr('username/password not valid');
   }
-});
-
-ipcMain.on('load-addfrd', () => {
-  addfrd_win.show();
 });
 
 /**

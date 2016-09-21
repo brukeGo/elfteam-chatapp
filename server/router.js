@@ -163,6 +163,8 @@ router.post('/auth_unread', (req, res, next) => {
       } 
       if (unread) {
         res.json({unread: unread});
+      } else {
+        res.json({err: null});
       }
     });
   } else {

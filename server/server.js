@@ -140,9 +140,9 @@ app.use('/', router);
  */
 
 socket_io = require('socket.io')(server);
-login_io = socket_io.of('/live/login');
+//login_io = socket_io.of('/live/login');
 io = socket_io.of('/live/auth');
-
+/*
 login_io.on('connection', (sock) => {
   sock.on('login', (dat) => {
     if (dat.un && dat.passw && dat.pw_sig) {
@@ -164,10 +164,33 @@ io.on('connection', socketioJwt.authorize({
   callback: false,
   timeout: 15000
 })).on('authenticated', (sock) => {
-  // this socket is authenticated, we can handle more events
+// this socket is authenticated, we can handle more events
   log(`${sock.decoded_token.nam} authenticated successfully`);
   sock.join(sock.decoded_token.nam);
   sock.emit('auth-success', 'welcome to private elfpm');
+  sock.on('logout', (dat) => {
+    auth.logout(dat.token, sock.decode_token.nam, (err) => {
+      if (err) {
+        log(err);
+        sock.emit('logout-err', err);
+      }
+      sock.emit('logout-success', `${sock.decoded_token.nam} logged out successfully`);
+      sock.disconnect();
+    });
+  });
+});
+*/
+
+io.on('connection', (sock) => {
+  sock.on('authenticate', (dat) => {
+    log(`token received from client:${dat.token}`);
+    sock.emit('auth-success', 'welcome to private elfpm');
+  });
+  sock.on('logout', (dat) => {
+    log(`logout-token:${dat.token}`);
+    sock.emit('logout-success', 'you logged out successfully');
+    sock.disconnect();
+  });
 });
 
 

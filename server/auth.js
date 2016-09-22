@@ -300,7 +300,7 @@ function logout(token, username, cb) {
         if (err) {
           return cb(err.message);
         }
-        user = Object.assign(user, {token: null, stat: 'off'});
+        user = Object.assign(user, {token: null});
         db.put(username, user, (err) => {  
           if (err) {
             log(err);

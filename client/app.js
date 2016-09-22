@@ -116,6 +116,8 @@ function create_win() {
     icon: iconpath,
     show: false
   });
+  chat_win.loadURL(chat_index);
+  chat_win.webContents.openDevTools();
   chat_win.on('closed', () => {
     if (addfrd_win !== null) {
       addfrd_win.close();

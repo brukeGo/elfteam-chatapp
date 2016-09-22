@@ -211,6 +211,5 @@ router.post('/auth_logout', (req, res, next) => {
   }
 });
 
-
 module.exports = router;
 

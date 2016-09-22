@@ -14,8 +14,11 @@ const https = require('https');
 const express = require('express');
 const bodyParser = require('body-parser');
 const helmet = require('helmet');
+const socketioJwt = require('socketio-jwt');
 const router = require('./router');
+const auth = require('./auth.js');
 var app = express();
+var server, socket_io, login_io, io;
 
 /**
  * tls options
@@ -33,6 +36,10 @@ const options = {
   },
   NPNProtcols: ['http/1.1']
 };
+
+function log(info) {
+  console.log(`elfpm-server: ${info}`);
+}
 
 /**
  * normalize a port into a number, string, or false.
@@ -101,7 +108,7 @@ http.createServer((req, res) => {
  * create HTTPS server.
  */
 
-var server = https.createServer(options, app);
+server = https.createServer(options, app);
 //var server = http.createServer(app);
 
 /**
@@ -126,4 +133,41 @@ app.use(helmet());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use('/', router);
+
+/**
+ * live chat server using socket.io custom namespaces
+ * for login and authenticated paths
+ */
+
+socket_io = require('socket.io')(server);
+login_io = socket_io.of('/live/login');
+io = socket_io.of('/live/auth');
+
+login_io.on('connection', (sock) => {
+  sock.on('login', (dat) => {
+    if (dat.un && dat.passw && dat.pw_sig) {
+      auth.login(dat.un, dat.passw, dat.pw_sig, (err, tok) => {
+        if (err) {
+          sock.emit('login-err', {err: err});
+        }
+        if (tok) {
+          log(`${dat.un} logged in successfully`);
+          sock.emit('login-success', {token: tok});
+        }
+      }); 
+    }
+  });
+});
+
+io.on('connection', socketioJwt.authorize({
+  secret: auth.jwtkey,
+  callback: false,
+  timeout: 15000
+})).on('authenticated', (sock) => {
+  // this socket is authenticated, we can handle more events
+  log(`${sock.decoded_token.nam} authenticated successfully`);
+  sock.join(sock.decoded_token.nam);
+  sock.emit('auth-success', 'welcome to private elfpm');
+});
+
 

@@ -109,12 +109,14 @@ function register(username, passw, cb) {
       db.put(username, {
         password: passw,
         token: tok,
+        stat: 'off',
         unread: []
       }, (err) => {
         if (err) {
           log(err.message);
           return cb(err.message, null);
         }
+        log(`${username} saved to db successfully`);
         return cb(null, tok);
       });
     } else {
@@ -298,7 +300,7 @@ function logout(token, username, cb) {
         if (err) {
           return cb(err.message);
         }
-        user = Object.assign(user, {token: null});
+        user = Object.assign(user, {token: null, stat: 'off'});
         db.put(username, user, (err) => {  
           if (err) {
             log(err);
@@ -314,6 +316,7 @@ function logout(token, username, cb) {
 }
 
 module.exports = {
+  jwtkey: Buffer.from(jwtkey, encoding),
   register: register,
   save_pubkey: save_pubkey,
   login: login,

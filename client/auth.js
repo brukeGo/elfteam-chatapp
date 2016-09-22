@@ -123,7 +123,7 @@ function get_tok(cb) {
 
 function req(opts, cb) {
   var server_res;  
-  opts = Object.assign({rejectUnauthorized: true}, opts);
+  opts = Object.assign(opts, {rejectUnauthorized: true});
   request.post(opts, (error, res, body) => {
     if (error) {
       console.log(`request-err: ${error}`);
@@ -415,7 +415,7 @@ function dec(cipher_text, cb) {
 
 function send_msg(msg, receiver, cb) {
   var d;
-  get_tok((err, result) => {
+  get_tok((err, res) => {
     if (err) {
       return cb(err, null);
     }  
@@ -425,14 +425,14 @@ function send_msg(msg, receiver, cb) {
       }
       req({
         url: uri.msg,
-        headers: {authorization: result.tok},
-        form: {sender: result.un, rec: receiver, msg: enc_dat}
+        headers: {authorization: res.tok},
+        form: {sender: res.un, rec: receiver, msg: enc_dat}
       }, (err) => {
         if (err) {
           return cb(err, null);
         } else {
           d = new Date();
-          return cb(null, {un: result.un, time: `${d.getHours()}:${d.getMinutes()}`});
+          return cb(null, {un: res.un, time: `${d.getHours()}:${d.getMinutes()}`});
         }
       });
     });
@@ -490,16 +490,16 @@ function dec_and_save_unread(unread_msgs, cb) {
  */
 
 function fetch_unread(cb) {
-  get_tok((err, result) => {
+  get_tok((err, res) => {
     if (err) {
       return cb(err);
     }
-    req({url: uri.unread, headers: {authorization: result.tok}, form: {un: result.un}}, (err, res) => {
+    req({url: uri.unread, headers: {authorization: res.tok}, form: {un: res.un}}, (err, server_res) => {
       if (err) {
         return cb(err);
       }
-      if (res.unread) {
-        dec_and_save_unread(res.unread, (err) => {
+      if (server_res.unread) {
+        dec_and_save_unread(server_res.unread, (err) => {
           if (err) {
             return cb(err);
           } else {
@@ -541,12 +541,12 @@ function get_unread(cb) {
  */
 
 function clear_unread(cb) {
-  get_tok((err, result) => {
+  get_tok((err, res) => {
     if (err) {
       return cb(err);
     }
-    if (result && result.tok && result.un) {
-      req({url: uri.clear_unread, headers: {authorization: result.tok}, form: {un: result.un}}, (err) => {
+    if (res && res.tok && res.un) {
+      req({url: uri.clear_unread, headers: {authorization: res.tok}, form: {un: res.un}}, (err) => {
         if (err) {
           return cb(err);
         } else {
@@ -586,12 +586,12 @@ function clear_unread(cb) {
  */
 
 function logout(cb) {
-  get_tok((err, result) => {
+  get_tok((err, res) => {
     if (err) {
       return cb(err);
     }
-    if (result && result.tok && result.un) {
-      req({url: uri.logout, headers: {authorization: result.tok}, form: {un: result.un}}, (err) => {
+    if (res && res.tok && res.un) {
+      req({url: uri.logout, headers: {authorization: res.tok}, form: {un: res.un}}, (err) => {
         if (err) {
           return cb(err);
         } else {

@@ -14,10 +14,9 @@ var logout_btn = document.getElementById('logout-btn');
  * append a new friend to friend list
  */
 
-function append_frd_list(frds) {
-  var frd_btn;
+function append_frd_list(frds) { 
   frds.forEach((frd) => {
-    frd_btn = document.createElement('button');
+    var frd_btn = document.createElement('button');
     frd_btn.className += 'list-group-item list-group-item-info';
     frd_btn.appendChild(document.createTextNode(frd.name));
     frd_btn.addEventListener('click', (ev) => {

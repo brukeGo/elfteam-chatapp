@@ -14,12 +14,12 @@ const privkey_path = path.join(tmp, 'priv.pem');
 const pubkey_path = path.join(tmp, 'pub.pem');
 const uri = {
   reg: 'https://localhost.daplie.com:3761/register',
-  reg_pubk: 'https://localhost.daplie.com:3761/register/auth_pubk',
+  reg_pubk: 'https://localhost.daplie.com:3761/register/auth/pubk',
   login: 'https://localhost.daplie.com:3761/login',
-  msg: 'https://localhost.daplie.com:3761/auth_msg',
-  unread: 'https://localhost.daplie.com:3761/auth_unread',
-  clear_unread: 'https://localhost.daplie.com:3761/auth_clear_unread',
-  logout: 'https://localhost.daplie.com:3761/auth_logout'
+  msg: 'https://localhost.daplie.com:3761/auth/msg',
+  unread: 'https://localhost.daplie.com:3761/auth/unread',
+  clear_unread: 'https://localhost.daplie.com:3761/auth/clear_unread',
+  logout: 'https://localhost.daplie.com:3761/auth/logout'
 };
 const encoding = 'base64'; // data encoding
 const alg = 'aes-256-cbc'; // encryption algorithm

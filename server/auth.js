@@ -316,7 +316,7 @@ function logout(token, username, cb) {
 }
 
 module.exports = {
-  jwtkey: Buffer.from(jwtkey, encoding),
+  jwtkey: jwtkey,
   register: register,
   save_pubkey: save_pubkey,
   login: login,

@@ -74,7 +74,7 @@ function create_win() {
   login_win.loadURL(login_index);
 
   // open devtool for debugging
-  login_win.webContents.openDevTools();
+  //login_win.webContents.openDevTools();
 
   // dereference window when it is closed
   login_win.on('closed', () => {
@@ -110,14 +110,13 @@ function create_win() {
   // chat window, authenticated route
   chat_win = new BrowserWindow({
     width: 1000,
-    height: 700,
+    height: 550,
     'min-width': 400,
     'min-height': 200,
     icon: iconpath,
     show: false
   });
-  chat_win.loadURL(chat_index);
-  chat_win.webContents.openDevTools();
+
   chat_win.on('closed', () => {
     if (addfrd_win !== null) {
       addfrd_win.close();
@@ -144,7 +143,7 @@ function load_chat() {
       login_win.reload();
     } else {
       chat_win.loadURL(chat_index);
-      chat_win.webContents.openDevTools();
+      //chat_win.webContents.openDevTools();
       chat_win.show();
     }
   });
@@ -174,7 +173,7 @@ app.on('activate', () => {
 
 ipcMain.on('load-reg', () => {
   reg_win.loadURL(reg_index);
-  reg_win.webContents.openDevTools();
+  //reg_win.webContents.openDevTools();
   reg_win.show();
 });
 
@@ -184,7 +183,7 @@ ipcMain.on('load-reg', () => {
 
 ipcMain.on('load-addfrd', () => {
   addfrd_win.loadURL(addfrd_index);
-  addfrd_win.webContents.openDevTools();
+  //addfrd_win.webContents.openDevTools();
   addfrd_win.show();
 });
 

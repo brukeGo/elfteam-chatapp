@@ -83,7 +83,7 @@ router.post('/register', (req, res, next) => {
  * from the client in the http headers authorization.
  */
 
-router.post('/register/auth_pubk', (req, res, next) => {
+router.post('/register/auth/pubk', (req, res, next) => {
   var tok = req.headers.authorization;
   var username = req.body.un;
   var pubkey = req.body.pubkey;
@@ -125,7 +125,7 @@ router.post('/login', (req, res, next) => {
  * handle post request when client sends a message
  */
 
-router.post('/auth_msg', (req, res, next) => {
+router.post('/auth/msg', (req, res, next) => {
   var tok = req.headers.authorization;
   var sender = req.body.sender;
   var receiver = req.body.rec;
@@ -152,7 +152,7 @@ router.post('/auth_msg', (req, res, next) => {
  * handle post request to get unread messages
  */
 
-router.post('/auth_unread', (req, res, next) => {
+router.post('/auth/unread', (req, res, next) => {
   var tok = req.headers.authorization;
   var username = req.body.un;
   if (tok && username) {
@@ -177,7 +177,7 @@ router.post('/auth_unread', (req, res, next) => {
  * handle post request to clear client's list of unread messages
  */
 
-router.post('/auth_clear_unread', (req, res, next) => {
+router.post('/auth/clear_unread', (req, res, next) => {
   var tok = req.headers.authorization;
   var username = req.body.un;
   if (tok && username) {
@@ -196,7 +196,7 @@ router.post('/auth_clear_unread', (req, res, next) => {
  * log out the client and delete the saved token
  */
 
-router.post('/auth_logout', (req, res, next) => {
+router.post('/auth/logout', (req, res, next) => {
   var tok = req.headers.authorization;
   var username = req.body.un;
   if (tok && username) {

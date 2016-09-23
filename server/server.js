@@ -140,57 +140,64 @@ app.use('/', router);
  */
 
 socket_io = require('socket.io')(server);
-//login_io = socket_io.of('/live/login');
+login_io = socket_io.of('/live/login');
 io = socket_io.of('/live/auth');
-/*
+
 login_io.on('connection', (sock) => {
   sock.on('login', (dat) => {
-    if (dat.un && dat.passw && dat.pw_sig) {
-      auth.login(dat.un, dat.passw, dat.pw_sig, (err, tok) => {
+    if (dat.un && dat.pw && dat.pw_sig) {
+      auth.login(dat.un, dat.pw, dat.pw_sig, (err, tok) => {
         if (err) {
-          sock.emit('login-err', {err: err});
+          sock.emit('login-err', err);
+          sock.disconnect();
         }
         if (tok) {
           log(`${dat.un} logged in successfully`);
           sock.emit('login-success', {token: tok});
+          sock.disconnect();
         }
       }); 
+    } else {    
+      sock.emit('login-err', 'username/pass/sig not valid');
+      sock.disconnect();
     }
   });
 });
 
+// authenticated sockets
 io.on('connection', socketioJwt.authorize({
   secret: auth.jwtkey,
   callback: false,
   timeout: 15000
 })).on('authenticated', (sock) => {
-// this socket is authenticated, we can handle more events
+  // this socket is authenticated, we can handle more events
   log(`${sock.decoded_token.nam} authenticated successfully`);
   sock.join(sock.decoded_token.nam);
-  sock.emit('auth-success', 'welcome to private elfpm');
+
+  sock.on('req-chat', (dat) => {
+    sock.join(`${dat.sender}-${dat.receiver}`);
+    sock.to(dat.receiver).emit('req-priv-chat', dat);
+  });
+
+  sock.on('req-priv-chat-reject', (dat) => {
+    io.to(dat.sender).emit('req-chat-reject', dat);
+  });
+
+  sock.on('req-priv-chat-accept', (dat) => {
+    sock.join(`${dat.sender}-${dat.receiver}`);
+    io.to(`${dat.sender}-${dat.receiver}`).emit('priv-chat-ready', `${dat.sender}-${dat.receiver} are ready to have a private conversation`);
+  });
+
   sock.on('logout', (dat) => {
-    auth.logout(dat.token, sock.decode_token.nam, (err) => {
+    auth.logout(dat.token, sock.decoded_token.nam, (err) => {
       if (err) {
         log(err);
         sock.emit('logout-err', err);
+      } else {
+        sock.emit('logout-success', `${sock.decoded_token.nam} logged out successfully`);
+        sock.disconnect();
       }
-      sock.emit('logout-success', `${sock.decoded_token.nam} logged out successfully`);
-      sock.disconnect();
     });
   });
 });
-*/
-
-io.on('connection', (sock) => {
-  sock.on('authenticate', (dat) => {
-    log(`token received from client:${dat.token}`);
-    sock.emit('auth-success', 'welcome to private elfpm');
-  });
-  sock.on('logout', (dat) => {
-    log(`logout-token:${dat.token}`);
-    sock.emit('logout-success', 'you logged out successfully');
-    sock.disconnect();
-  });
-});
-
 

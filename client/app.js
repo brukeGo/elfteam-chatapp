@@ -37,7 +37,7 @@ var addfrd_win = null;
 function showerr(err) {
   dialog.showMessageBox({
     type: 'error',
-    title: 'elfpm error',
+    title: 'elfocrypt error',
     message: `\n${err}`,
     buttons: ['ok']
   });
@@ -50,7 +50,7 @@ function showerr(err) {
 function showinfo(info) {
   dialog.showMessageBox({
     type: 'info',
-    title: 'elfpm',
+    title: 'elfocrypt',
     message: `\n${info}`,
     buttons: ['ok']
   });

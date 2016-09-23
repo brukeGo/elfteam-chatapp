@@ -1,7 +1,7 @@
 {
-  "name": "elfpm-server",
+  "name": "elfocrypt-server",
   "version": "0.0.1",
-  "description": "elfpm server",
+  "description": "elfocrypt server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -14,12 +14,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mawni/elfpm.git"
+    "url": "git+https://github.com/mawni/elfocrypt.git"
   },
   "bugs": {
-    "url": "https://github.com/mawni/elfpm/issues"
+    "url": "https://github.com/mawni/elfocrypt/issues"
   },
-  "homepage": "https://github.com/mawni/elfpm#readme",
+  "homepage": "https://github.com/mawni/elfocrypt#readme",
   "engines": {
     "node": ">6.0.0"
   },

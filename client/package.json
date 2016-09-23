@@ -1,5 +1,5 @@
 {
-  "name": "elfpm",
+  "name": "elfocrypt-client",
   "version": "0.0.1",
   "description": "private end-to-end encrypted chat messenger",
   "main": "app.js",
@@ -16,12 +16,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mawni/elfpm.git"
+    "url": "git+https://github.com/mawni/elfocrypt.git"
   },
   "bugs": {
-    "url": "https://github.com/mawni/elfpm/issues"
+    "url": "https://github.com/mawni/elfocrypt/issues"
   },
-  "homepage": "https://github.com/mawni/elfpm#readme",
+  "homepage": "https://github.com/mawni/elfocrypt#readme",
   "dependencies": {
     "async": "^2.0.1",
     "leveldown": "^1.4.6",

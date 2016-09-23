@@ -185,7 +185,19 @@ io.on('connection', socketioJwt.authorize({
 
   sock.on('req-priv-chat-accept', (dat) => {
     sock.join(`${dat.sender}-${dat.receiver}`);
-    io.to(`${dat.sender}-${dat.receiver}`).emit('priv-chat-ready', `${dat.sender}-${dat.receiver} are ready to have a private conversation`);
+    io.to(`${dat.sender}-${dat.receiver}`).emit('priv-chat-ready', {
+      room: `${dat.sender}-${dat.receiver}`,
+      sender: dat.sender,
+      receiver: dat.receiver,
+      msg: `${dat.sender} and ${dat.receiver} are ready to have a private conversation`
+    });
+  });
+
+  sock.on('priv-msg', (dat) => {
+    sock.broadcast.to(dat.room).emit('priv-msg', dat);
+  });
+  sock.on('priv-msg-res', (dat) => {
+    sock.broadcast.to(dat.room).emit('priv-msg-res', dat);
   });
 
   sock.on('logout', (dat) => {
@@ -193,6 +205,7 @@ io.on('connection', socketioJwt.authorize({
       if (err) {
         log(err);
         sock.emit('logout-err', err);
+        sock.disconnect();
       } else {
         sock.emit('logout-success', `${sock.decoded_token.nam} logged out successfully`);
         sock.disconnect();

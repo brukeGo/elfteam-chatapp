@@ -109,7 +109,6 @@ function register(username, passw, cb) {
       db.put(username, {
         password: passw,
         token: tok,
-        stat: 'off',
         unread: []
       }, (err) => {
         if (err) {
@@ -216,7 +215,7 @@ function handle_msg(tok, sender, receiver, msg, cb) {
         db.put(receiver, user, (err) => {   
           if (err) {
             log(err);
-            return cb(err).message;
+            return cb(err.message);
           }
           return cb();
         });

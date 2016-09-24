@@ -185,12 +185,25 @@ io.on('connection', socketioJwt.authorize({
 
   sock.on('req-priv-chat-accept', (dat) => {
     sock.join(`${dat.sender}-${dat.receiver}`);
-    io.to(`${dat.sender}-${dat.receiver}`).emit('priv-chat-ready', {
+    sock.to(dat.sender).emit('priv-chat-accepted', {
       room: `${dat.sender}-${dat.receiver}`,
       sender: dat.sender,
-      receiver: dat.receiver,
-      msg: `${dat.sender} and ${dat.receiver} are ready to have a private conversation`
+      receiver: dat.receiver
     });
+  });
+
+  // sender send his/her fresh diffie-hellman encrypted public key
+  sock.on('priv-chat-key-sender', (dat) => {
+    sock.broadcast.to(dat.room).emit('priv-chat-sender-pubkey', dat);
+  });
+
+  // receiver respond back with his/her newly generated dh public key
+  sock.on('priv-chat-receiver-pubkey', (dat) => {
+    sock.broadcast.to(dat.room).emit('priv-chat-key-receiver', dat);
+  });
+
+  sock.on('priv-chat-key-exchanged', (dat) => {
+    sock.to(dat.room).emit('priv-chat-ready', dat);
   });
 
   sock.on('priv-msg', (dat) => {

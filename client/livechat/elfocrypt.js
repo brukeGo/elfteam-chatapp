@@ -294,6 +294,8 @@ if (arg === 'login') {
         .on('authenticated', () => {
           log(`a private chat request sent to ${arg}, waiting for a response..`); 
           var rl = readline.createInterface({input: process.stdin, output: process.stdout});
+
+          // send a private chat request to a friend
           sock.emit('req-chat', {sender: username, receiver: arg})
             .on('req-chat-reject', (dat) => {
               log(`${dat.receiver} rejected the offer`);
@@ -304,10 +306,42 @@ if (arg === 'login') {
                 }
                 exit(0);
               });
+            }).on('priv-chat-accepted', (dat) => {
+              gen_and_encrypt_dh(dat, (err, dhpubkey) => {
+                if (err) {
+                  er(err);
+                  exit(1);
+                }
+                dat = Object.assign(dat, {dh_sender: dhpubkey});
+                console.log(dat);
+                sock.emit('priv-chat-key-sender', dat);
+              });
+            }).on('priv-chat-key-receiver', (dat) => {
+              // we received friend's encrypted diffie-hellman public key
+              // decrypt it and compute the dh secret and save it to db
+              // for this private chat session encryption
+              decrypt_and_compute_dh(dat, (err) => {
+                if (err) {
+                  er(err);
+                  exit(1);
+                }
+                sock.emit('priv-chat-key-exchanged', {
+                  room: dat.room,
+                  sender: dat.sender,
+                  receiver: dat.receiver
+                });
+              });
             }).on('priv-chat-ready', (dat) => {
-              log(dat.msg);
-              rl.setPrompt(`${dat.sender}: `);
-              rl.prompt();
+              db.put('livechat_dat', dat, (err) => {
+                if (err) {
+                  er(err.message);
+                  exit(1);
+                } else {
+                  log(`${dat.sender} and ${dat.receiver} are ready to have a private conversation`);
+                  rl.setPrompt(`${dat.sender}: `);
+                  rl.prompt();
+                }
+              });
             });
 
           sock.on('priv-msg-res', (dat) => {
@@ -316,8 +350,14 @@ if (arg === 'login') {
           });
 
           rl.on('line', (msg) => {
-            sock.emit('priv-msg', {room: `${username}-${arg}`, sender: username, msg: msg});
-            rl.prompt();
+            db.get('livechat_dat', (err, dat) => {
+              if (err) {
+                er(err);
+                exit(1);
+              }
+              sock.emit('priv-msg', {room: dat.room, sender: dat.sender, msg: msg});
+              rl.prompt();
+            });
           }).on('close', () => {
             logout((err) => {
               if (err) {
@@ -327,7 +367,6 @@ if (arg === 'login') {
               exit(0);
             });
           });
-
         }).on('unauthorized', (msg) => {
           er(`socket unauthorized: ${JSON.stringify(msg.data)}`);
           er(msg.data.type);
@@ -337,71 +376,79 @@ if (arg === 'login') {
   });
 } else {
   log('Your friends private chat requests will be shown up here when they received..');
-  db.get('name', (err, username) => {
+  db.get('tok', (err, tok) => {
     if (err) {
-      er(err.message);
+      er(err);
       exit(1);
     }
-    db.get('tok', (err, tok) => {
-      if (err) {
-        er(err);
-        exit(1);
-      }
-      sock.emit('authenticate', {token: tok})
-        .on('authenticated', () => {
-          var rl = readline.createInterface({input: process.stdin, output: process.stdout});
-          sock.on('req-priv-chat', (dat) => {
-            rl.question(`\n${dat.sender} wants to have a private conversation. Do you accept? [y/n] `, (ans) => {
-              if (ans.match(/^y(es)?$/i)) {
-                sock.emit('req-priv-chat-accept', dat);
-              } else {
-                sock.emit('req-priv-chat-reject', dat);
-                log(`a reject response sent to ${dat.sender}`);
-              }
-            });
+    sock.emit('authenticate', {token: tok})
+      .on('authenticated', () => {
+        var rl = readline.createInterface({input: process.stdin, output: process.stdout});
+
+        // receive a private chat request from a friend
+        sock.on('req-priv-chat', (dat) => {
+          rl.question(`\n${dat.sender} wants to have a private conversation. Do you accept? [y/n] `, (ans) => {
+            if (ans.match(/^y(es)?$/i)) {
+              sock.emit('req-priv-chat-accept', dat);
+            } else {
+              sock.emit('req-priv-chat-reject', dat);
+              log(`a reject response sent to ${dat.sender}`);
+            }
           });
-          sock.on('priv-chat-ready', (dat) => {
-            db.put('room', dat.room, (err) => {
-              if (err) {
-                er(err.message);
-                rl.close();
-                exit(1);
-              } else {
-                log(dat.msg);
-                rl.setPrompt(`${dat.receiver}: `);
-                rl.prompt();
-              }
-            });
-          });      
-          sock.on('priv-msg', (dat) => {
-            console.log(`\n${dat.sender}: ${dat.msg}`);
+        });
+        sock.on('priv-chat-sender-pubkey', (dat) => {
+          gen_and_encrypt_dh(dat, (err, dhpubkey) => {
+            if (err) {
+              er(err);
+              exit(1);
+            }
+            dat = Object.assign(dat, {dh_receiver: dhpubkey});
+            sock.emit('priv-chat-receiver-pubkey', dat);
+          });
+        });
+        sock.on('priv-chat-ready', (dat) => {
+          db.put('livechat_dat', dat, (err) => {
+            if (err) {
+              er(err.message);
+              rl.close();
+              exit(1);
+            } else {
+              log(`${dat.sender} and ${dat.receiver} are ready to have a private conversation`);
+              rl.setPrompt(`${dat.receiver}: `);
+              rl.prompt();
+            }
+          });
+        });
+
+        sock.on('priv-msg', (dat) => {
+          console.log(`\n${dat.sender}: ${dat.msg}`);
+          rl.prompt();
+        });
+
+        rl.on('line', (msg) => {
+          db.get('livechat_dat', (err, dat) => {
+            if (err) {
+              er(err.message);
+              rl.close();
+              exit(1);
+            }
+            sock.emit('priv-msg-res', {room: dat.room, sender: dat.receiver, msg: msg});
             rl.prompt();
           });
-
-          rl.on('line', (msg) => {
-            db.get('room', (err, room) => {
-              if (err) {
-                er(err.message);
-                rl.close();
-                exit(1);
-              }
-              sock.emit('priv-msg-res', {room: room, sender: username, msg: msg});
-              rl.prompt();
-            });
-          }).on('close', () => {
-            logout((err) => {
-              if (err) {
-                er(err);
-                exit(1);
-              }
-              exit(0);
-            });
+        }).on('close', () => {
+          logout((err) => {
+            if (err) {
+              er(err);
+              exit(1);
+            }
+            exit(0);
           });
+
         }).on('unauthorized', (msg) => {
           er(`socket unauthorized: ${JSON.stringify(msg.data)}`);
           er(msg.data.type);
           exit(1);
         });
-    });
+      });
   });
 }

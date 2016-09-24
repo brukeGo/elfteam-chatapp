@@ -38,7 +38,7 @@ const options = {
 };
 
 function log(info) {
-  console.log(`elfpm-server: ${info}`);
+  console.log(`elfocrypt-server: ${info}`);
 }
 
 /**
@@ -116,7 +116,7 @@ server = https.createServer(options, app);
  */
 
 server.listen(port, () => {
-  console.log(`elfpm-server listening on port ${port}..`);
+  console.log(`elfocrypt-server listening on port ${port}..`);
 });
 
 server.on('error', onError);
@@ -176,6 +176,7 @@ io.on('connection', socketioJwt.authorize({
 
   sock.on('req-chat', (dat) => {
     sock.join(`${dat.sender}-${dat.receiver}`);
+    dat = Object.assign(dat, {room: `${dat.sender}-${dat.receiver}`});
     sock.to(dat.receiver).emit('req-priv-chat', dat);
   });
 
@@ -184,26 +185,17 @@ io.on('connection', socketioJwt.authorize({
   });
 
   sock.on('req-priv-chat-accept', (dat) => {
-    sock.join(`${dat.sender}-${dat.receiver}`);
-    sock.to(dat.sender).emit('priv-chat-accepted', {
-      room: `${dat.sender}-${dat.receiver}`,
-      sender: dat.sender,
-      receiver: dat.receiver
-    });
+    sock.join(dat.room);
+    sock.broadcast.to(dat.room).emit('priv-chat-accepted', dat);
   });
 
   // sender send his/her fresh diffie-hellman encrypted public key
-  sock.on('priv-chat-key-sender', (dat) => {
+  sock.on('priv-chat-sender-key', (dat) => {
     sock.broadcast.to(dat.room).emit('priv-chat-sender-pubkey', dat);
   });
 
-  // receiver respond back with his/her newly generated dh public key
-  sock.on('priv-chat-receiver-pubkey', (dat) => {
-    sock.broadcast.to(dat.room).emit('priv-chat-key-receiver', dat);
-  });
-
   sock.on('priv-chat-key-exchanged', (dat) => {
-    sock.to(dat.room).emit('priv-chat-ready', dat);
+    io.to(dat.room).emit('priv-chat-ready', dat);
   });
 
   sock.on('priv-msg', (dat) => {

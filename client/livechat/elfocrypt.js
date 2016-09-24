@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const levelup = require('levelup');
 const async = require('async');
+const read = require('read');
 const readline = require('readline');
 const io = require('socket.io-client');
 const encoding = 'base64';
@@ -16,11 +17,6 @@ var db = levelup(path.resolve('..', 'db'));
 
 const sock = io.connect('https://localhost.daplie.com:3761/live/auth');
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
 function er(error) {
   console.error(`\nerror: ${error}`);
 }
@@ -30,6 +26,7 @@ function log(info) {
 }
 
 function exit(code) {
+  sock.disconnect();
   process.exit(code);
 }
 
@@ -248,34 +245,33 @@ function login(usern, passw, cb) {
   });
 }
 
-rl.on('SIGINT', () => {
-  logout((err) => {
-    if (err) {
-      er(err);
-    }
-    exit(0);
-  });
-});
-
 process.on('SIGINT', () => {
   logout((err) => {
     if (err) {
       er(err);
+      exit(1);
     }
     exit(0);
   });
 });
 
 if (arg === 'login') {
-  rl.question('\nusername: ', (usern) => {
-    rl.question('password: ', (passw) => {
+  console.log();
+  read({prompt: 'username: '}, (err, usern) => {
+    if (err) {
+      er(err);
+      exit(1);
+    }
+    read({prompt: 'password: ', silent: true}, (err, passw) => {
+      if (err) {
+        er(err);
+        exit(1);
+      }
       login(usern, passw, (err) => {
         if (err) {
           er(err);
-          rl.close();
           exit(1);
         } else {
-          rl.close();
           exit(0);
         }
       });
@@ -297,11 +293,17 @@ if (arg === 'login') {
       sock.emit('authenticate', {token: tok})
         .on('authenticated', () => {
           log(`a private chat request sent to ${arg}, waiting for a response..`); 
+          var rl = readline.createInterface({input: process.stdin, output: process.stdout});
           sock.emit('req-chat', {sender: username, receiver: arg})
             .on('req-chat-reject', (dat) => {
               log(`${dat.receiver} rejected the offer`);
-              sock.disconnect();
-              exit(0);
+              logout((err) => {
+                if (err) {
+                  er(err);
+                  exit(1);
+                }
+                exit(0);
+              });
             }).on('priv-chat-ready', (dat) => {
               log(dat.msg);
               rl.setPrompt(`${dat.sender}: `);
@@ -317,44 +319,44 @@ if (arg === 'login') {
             sock.emit('priv-msg', {room: `${username}-${arg}`, sender: username, msg: msg});
             rl.prompt();
           }).on('close', () => {
-            log('explore your mind!');
-            sock.disconnect();
-            exit(0);
+            logout((err) => {
+              if (err) {
+                er(err);
+                exit(1);
+              }
+              exit(0);
+            });
           });
 
         }).on('unauthorized', (msg) => {
           er(`socket unauthorized: ${JSON.stringify(msg.data)}`);
           er(msg.data.type);
-          sock.disconnect();
           exit(1);
         });
-    });
+    }); 
   });
 } else {
-  log('alright! private chat requests from your friends will be shown up here when they received..');
+  log('Your friends private chat requests will be shown up here when they received..');
   db.get('name', (err, username) => {
     if (err) {
       er(err.message);
-      sock.disconnect();
       exit(1);
     }
     db.get('tok', (err, tok) => {
       if (err) {
         er(err);
-        sock.disconnect();
         exit(1);
       }
       sock.emit('authenticate', {token: tok})
         .on('authenticated', () => {
+          var rl = readline.createInterface({input: process.stdin, output: process.stdout});
           sock.on('req-priv-chat', (dat) => {
-            sock.emit('req-priv-chat-accept', dat); 
             rl.question(`\n${dat.sender} wants to have a private conversation. Do you accept? [y/n] `, (ans) => {
               if (ans.match(/^y(es)?$/i)) {
                 sock.emit('req-priv-chat-accept', dat);
               } else {
                 sock.emit('req-priv-chat-reject', dat);
-                log('a reject response sent to the other client');
-                rl.close();
+                log(`a reject response sent to ${dat.sender}`);
               }
             });
           });
@@ -362,7 +364,6 @@ if (arg === 'login') {
             db.put('room', dat.room, (err) => {
               if (err) {
                 er(err.message);
-                sock.disconnect();
                 rl.close();
                 exit(1);
               } else {
@@ -381,7 +382,6 @@ if (arg === 'login') {
             db.get('room', (err, room) => {
               if (err) {
                 er(err.message);
-                sock.disconnect();
                 rl.close();
                 exit(1);
               }
@@ -389,15 +389,17 @@ if (arg === 'login') {
               rl.prompt();
             });
           }).on('close', () => {
-            log('explore your mind!');
-            sock.disconnect();
-            exit(0);
+            logout((err) => {
+              if (err) {
+                er(err);
+                exit(1);
+              }
+              exit(0);
+            });
           });
-
         }).on('unauthorized', (msg) => {
           er(`socket unauthorized: ${JSON.stringify(msg.data)}`);
           er(msg.data.type);
-          sock.disconnect();
           exit(1);
         });
     });

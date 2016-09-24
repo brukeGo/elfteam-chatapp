@@ -207,7 +207,7 @@ io.on('connection', socketioJwt.authorize({
         sock.emit('logout-err', err);
         sock.disconnect();
       } else {
-        sock.emit('logout-success', `${sock.decoded_token.nam} logged out successfully`);
+        sock.emit('logout-success', `logged out successfully`);
         sock.disconnect();
       }
     });

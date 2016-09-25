@@ -186,7 +186,7 @@ io.on('connection', socketioJwt.authorize({
 
   sock.on('req-priv-chat-accept', (dat) => {
     sock.join(dat.room);
-    sock.broadcast.to(dat.room).emit('priv-chat-accepted', dat);
+    sock.broadcast.to(dat.room).emit('priv-chat-accept', dat);
   });
 
   sock.on('priv-chat-sender-key', (dat) => {

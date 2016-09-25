@@ -13,17 +13,8 @@ const encoding = 'base64';
 const alg = 'aes-256-cbc';
 const hmac_alg = 'sha256';
 const arg = process.argv[2];
+const frd = process.argv[3];
 const sock = io.connect('https://localhost.daplie.com:3761/live/auth');
-
-/**
- * create an elliptic curve Diffie-Hellman key exchange for this
- * private chat session and generate the client dh public key 
- * to send to the other client
- */
-
-const client_dh = crypto.createECDH('secp256k1');
-const clientkey = client_dh.generateKeys(encoding);
-
 var db = levelup(path.resolve('..', 'db'));
 
 function er(error) {
@@ -296,7 +287,7 @@ if (arg === 'login') {
       exit(0);
     }
   });
-} else if (arg !== 'login' && arg !== undefined && arg !== '') {
+} else {
   db.get('name', (err, username) => {
     if (err) {
       er(err.message);
@@ -309,21 +300,31 @@ if (arg === 'login') {
         sock.disconnect();
         exit(1);
       }
-      sock.emit('authenticate', {token: tok}).on('authenticated', () => {  
-        var rl = readline.createInterface({input: process.stdin, output: process.stdout});
-        log(col.italic(`a private chat request sent to ${col.magenta(arg)}, waiting for a response..`));
+      sock.emit('authenticate', {token: tok}).on('authenticated', () => {
+        // create an elliptic curve Diffie-Hellman key exchange for this
+        // private chat session and generate the client dh public key 
+        // to send to the other client
+        const client_dh = crypto.createECDH('secp256k1');
+        const clientkey = client_dh.generateKeys(encoding);
 
-        // send a private chat request to a friend
-        sock.emit('req-chat', {sender: username, receiver: arg}).on('req-chat-reject', (dat) => {  
-          log(`${col.magenta(dat.receiver)} rejected the offer`);
-          logout((err) => {
-            if (err) {
-              er(err);
-              exit(1);
-            }
-            exit(0);
+        var rl = readline.createInterface({input: process.stdin, output: process.stdout});
+        if (arg === '-p' && frd !== undefined && frd !== '') {
+          log(col.italic(`a private chat request sent to ${col.magenta(frd)}, waiting for a response..`));
+          // send a private chat request to a friend
+          sock.emit('req-chat', {sender: username, receiver: frd}).on('req-chat-reject', (dat) => {  
+            log(`${col.magenta(dat.receiver)} rejected the offer`);
+            logout((err) => {
+              if (err) {
+                er(err);
+                exit(1);
+              }
+              exit(0);
+            });
           });
-        }).on('priv-chat-accepted', (dat) => {  
+        } else if (arg === undefined || arg === '') {
+          log(col.italic('Your friends private chat requests will be shown up here..'));
+        }  
+        sock.on('priv-chat-accept', (dat) => {  
           var dh_sec;
           verify_tok(dat.token, dat.receiver, (err, decod) => {
             if (err) {
@@ -351,18 +352,64 @@ if (arg === 'login') {
               exit(1);
             }
           });
-        }).on('priv-chat-ready', (dat) => {  
+        }).on('req-priv-chat', (dat) => {
+          // receive a private chat request from a friend
+          rl.question(col.italic.cyan(`\n${col.magenta(dat.sender)} wants to have a private conversation. Do you accept? [y/n] `), (ans) => {
+            if (ans.match(/^y(es)?$/i)) {  
+              gen_jwt({dh: clientkey}, (err, tok) => {
+                if (err) {
+                  er(err);
+                  exit(1);
+                }
+                dat = Object.assign(dat, {token: tok});
+                sock.emit('req-priv-chat-accept', dat);
+              });
+            } else {
+              sock.emit('req-priv-chat-reject', dat);
+              log(col.italic(`a reject response sent to ${col.magenta(dat.sender)}`));
+            }
+          });
+        }).on('priv-chat-sender-pubkey', (dat) => {  
+          var dh_sec;
+          verify_tok(dat.token, dat.sender, (err, decod) => {
+            if (err) {
+              er(err);
+              exit(1);
+            }
+            if (decod && decod.dh) {
+              dh_sec = client_dh.computeSecret(decod.dh, encoding, encoding);
+              db.put('dh_sec', dh_sec, (err) => {
+                if (err) {
+                  er(err);
+                  exit(1);
+                }
+                sock.emit('priv-chat-key-exchanged', {
+                  room: dat.room,
+                  sender: dat.sender,
+                  receiver: dat.receiver
+                });
+              });
+            } else {
+              er('token not valid');
+              exit(1);
+            }
+          });
+        }).on('priv-chat-ready', (dat) => {
           db.put('session_dat', JSON.stringify(dat), (err) => {
             if (err) {
               er(err.message);
               exit(1);
             } else {
               log(col.italic.green(`${dat.sender} and ${dat.receiver} are ready to have a private conversation`));
-              rl.setPrompt(col.gray(`${dat.sender}: `));
+              if (arg === '-p') {
+                rl.setPrompt(col.gray(`${dat.sender}: `));
+              } else if (arg === undefined || arg === '') {
+                rl.setPrompt(col.gray(`${dat.receiver}: `));
+              }
               rl.prompt();
             }
           });
-        }).on('priv-msg-res', (dat) => {
+        }).on('priv-msg', (dat) => {
           // verify token and decrypt the message
           verify_tok(dat.token, dat.sender, (err, decod) => {
             if (err) {
@@ -384,9 +431,8 @@ if (arg === 'login') {
             }
           }); 
         });
-
         rl.on('line', (msg) => {
-          var dat;
+          var dat, sen, rec;
           db.get('session_dat', (err, session_dat) => {
             if (err) {
               er(err);
@@ -398,8 +444,15 @@ if (arg === 'login') {
               er(err);
               exit(1);
             }
+            if (arg === '-p') {
+              rec = dat.receiver;
+              sen = dat.sender;
+            } else if (arg === undefined || arg === '') {
+              rec = dat.sender;
+              sen = dat.receiver;
+            }
             // encrypt the message and sign the message token
-            encrypt(msg, dat.receiver, (err, enc_dat) => {
+            encrypt(msg, rec, (err, enc_dat) => {
               if (err) {
                 er(err);
                 exit(1);
@@ -409,7 +462,7 @@ if (arg === 'login') {
                   er(err);
                   exit(1);
                 }
-                sock.emit('priv-msg', {room: dat.room, sender: dat.sender, token: tok});
+                sock.emit('priv-msg', {room: dat.room, sender: sen, token: tok});
                 rl.prompt();
               });
             });
@@ -427,139 +480,8 @@ if (arg === 'login') {
         er(`socket unauthorized: ${JSON.stringify(msg.data)}`);
         er(msg.data.type);
         exit(1);
-      });
-    }); 
-  });
-} else {
-  db.get('tok', (err, tok) => {
-    if (err) {
-      er(err);
-      exit(1);
-    }
-    sock.emit('authenticate', {token: tok}).on('authenticated', () => {
-      var rl = readline.createInterface({input: process.stdin, output: process.stdout});
-      log(col.italic('Your friends private chat requests will be shown up here..'));
-
-      // receive a private chat request from a friend  
-      sock.on('req-priv-chat', (dat) => {
-        rl.question(col.italic.cyan(`\n${col.magenta(dat.sender)} wants to have a private conversation. Do you accept? [y/n] `), (ans) => {
-          if (ans.match(/^y(es)?$/i)) {  
-            gen_jwt({dh: clientkey}, (err, tok) => {
-              if (err) {
-                er(err);
-                exit(1);
-              }
-              dat = Object.assign(dat, {token: tok});
-              sock.emit('req-priv-chat-accept', dat);
-            });
-          } else {
-            sock.emit('req-priv-chat-reject', dat);
-            log(col.italic(`a reject response sent to ${col.magenta(dat.sender)}`));
-          }
-        });
-      }).on('priv-chat-sender-pubkey', (dat) => {  
-        var dh_sec;
-        verify_tok(dat.token, dat.sender, (err, decod) => {
-          if (err) {
-            er(err);
-            exit(1);
-          }
-          if (decod && decod.dh) {
-            dh_sec = client_dh.computeSecret(decod.dh, encoding, encoding);
-            db.put('dh_sec', dh_sec, (err) => {
-              if (err) {
-                er(err);
-                exit(1);
-              }
-              sock.emit('priv-chat-key-exchanged', {
-                room: dat.room,
-                sender: dat.sender,
-                receiver: dat.receiver
-              });
-            });
-          } else {
-            er('token not valid');
-            exit(1);
-          }
-        });
-      }).on('priv-chat-ready', (dat) => {  
-        db.put('session_dat', JSON.stringify(dat), (err) => {
-          if (err) {  
-            er(err.message);
-            rl.close();
-            exit(1);
-          } else {
-            log(col.italic.green(`${dat.sender} and ${dat.receiver} are ready to have a private conversation`));
-            rl.setPrompt(col.gray(`${dat.receiver}: `));
-            rl.prompt();
-          }
-        });
-      }).on('priv-msg', (dat) => {
-        // verify token and decrypt the message
-        verify_tok(dat.token, dat.sender, (err, decod) => {
-          if (err) {
-            er(err);
-            exit(1);
-          }
-          if (decod && decod.msg) {
-            decrypt(decod.msg, (err, decrypted) => {
-              if (err) {
-                er(err);
-                exit(1);
-              }
-              log(`${col.magenta(dat.sender)}: ${decrypted}`);
-              rl.prompt();
-            });
-          } else {
-            er('token not valid');
-            exit(1);
-          }
-        });
-      });
-
-      rl.on('line', (msg) => {  
-        var dat;
-        db.get('session_dat', (err, session_dat) => {
-          if (err) {
-            er(err.message);
-            rl.close();
-            exit(1);
-          }
-          try {
-            dat = JSON.parse(session_dat);
-          } catch(err) {
-            er(err);
-            exit(1);
-          }
-          // encrypt and sign the message token
-          encrypt(msg, dat.sender, (err, enc_dat) => {
-            if (err) {
-              er(err);
-              exit(1);
-            }
-            gen_jwt({msg: enc_dat}, (err, tok) => {
-              if (err) {
-                er(err);
-                exit(1);
-              }
-              sock.emit('priv-msg-res', {room: dat.room, sender: dat.receiver, token: tok});
-              rl.prompt();
-            });
-          });
-        });
-      }).on('close', () => {
-        logout((err) => {
-          if (err) {
-            er(err);
-            exit(1);
-          }
-          exit(0);
-        });
-      }).on('unauthorized', (msg) => {
-        er(`socket unauthorized: ${JSON.stringify(msg.data)}`);
-        er(msg.data.type);
-        exit(1);
-      });
+      }); 
     });
   });
 }
+

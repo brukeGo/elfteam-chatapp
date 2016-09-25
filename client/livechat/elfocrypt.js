@@ -553,13 +553,6 @@ if (arg === 'login') {
               exit(1);
             } else {
               log(col.italic.green(`${dat.sender} and ${dat.receiver} are ready to have a private conversation`));
-              /*
-              if (arg === '-p') {
-                rl.setPrompt(col.gray(`${dat.sender}: `));
-              } else if (arg === undefined || arg === '') {
-                rl.setPrompt(col.gray(`${dat.receiver}: `));
-              }
-              */
               rl.setPrompt(col.gray(`${username}: `));
               rl.prompt();
             }

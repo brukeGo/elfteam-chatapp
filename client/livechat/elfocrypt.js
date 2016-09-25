@@ -24,17 +24,18 @@ const frd = process.argv[3];
 const sock = io.connect('https://localhost.daplie.com:3761/live/auth');
 var db = levelup(path.resolve('..', 'db'));
 
+function exit(code) {
+  sock.disconnect();
+  process.exit(code);
+}
+
 function er(error) {
   console.error(col.italic.red(`\nerror: ${error}`));
+  exit(1);
 }
 
 function log(info) {
   console.log(`${info}`);
-}
-
-function exit(code) {
-  sock.disconnect();
-  process.exit(code);
 }
 
 function gen_privkey() {
@@ -87,7 +88,7 @@ function gen_sign(data, cb) {
   var sign;
   db.get('priv', (err, privkey) => {
     if (err) {
-      return cb(err.message, null);
+      return cb(err.message);
     }
     sign = crypto.createSign('RSA-SHA256');
     sign.write(data);
@@ -119,7 +120,7 @@ function get_frd_pubkey(frd_username, cb) {
   var frd_pubkey;
   get_frds((err, frds) => {
     if (err) {
-      return cb(err, null);
+      return cb(err);
     }
     frds.forEach((frd) => {
       if (frd.pubkey && frd.name === frd_username) {
@@ -130,12 +131,16 @@ function get_frd_pubkey(frd_username, cb) {
   });
 }
 
+/**
+ * encrypt a private message with receiver's public key
+ */
+
 function encrypt(msg, receiver, cb) {
   var hmac_key, iv, hmac, tag, key_encrypted, cipher, cipher_text;
 
   get_frd_pubkey(receiver, (err, rec_pubkey) => {
     if (err) {
-      return cb(err, null);
+      return cb(err);
     }
     if (rec_pubkey) {
       db.get('dh_sec', (err, dh_sec) => {
@@ -162,7 +167,7 @@ function encrypt(msg, receiver, cb) {
           // concatenate key, cipher text, iv and hmac digest
           return cb(null, `${key_encrypted.toString(encoding)}#${cipher_text}#${iv.toString(encoding)}#${tag}`);
         } catch(err) {
-          return cb(err.message, null);
+          return cb(err.message);
         } 
 
       });
@@ -172,13 +177,16 @@ function encrypt(msg, receiver, cb) {
   });
 }
 
+/**
+ * decrypt a private message with client's private key
+ */
 function decrypt(cipher_text, cb) {
   var chunk, key_encrypted, ct, iv, tag,hmac_key, 
     hmac, computed_tag, decipher, decrypted;
 
   db.get('priv', (err, privkey) => {
     if (err) {
-      return cb(err.message, null);
+      return cb(err.message);
     }
     db.get('dh_sec', (err, dh_sec) => {
       if (err) {
@@ -204,7 +212,7 @@ function decrypt(cipher_text, cb) {
         decrypted += decipher.final('utf8');
         return cb(null, decrypted);
       } catch(err) {
-        return cb(err.message, null);
+        return cb(err.message);
       }
     });
   });
@@ -354,7 +362,7 @@ function verify_tok(token, frd, cb) {
     if (err) {
       return cb(err);
     }
-    // verify jwt asymmetric
+    // verify jwt asymmetric with friend's public key
     jwt.verify(token, frd_pubkey, {algorithms: 'RS256'}, (err, decod) => {
       if (err) {
         return cb(err.message);
@@ -369,7 +377,6 @@ process.on('SIGINT', () => {
   logout((err) => {
     if (err) {
       er(err);
-      exit(1);
     }
     exit(0);
   });
@@ -380,17 +387,14 @@ if (arg === 'login') {
   read({prompt: 'username: '}, (err, usern) => {
     if (err) {
       er(err);
-      exit(1);
     }
     read({prompt: 'password: ', silent: true}, (err, passw) => {
       if (err) {
         er(err);
-        exit(1);
       }
       login(usern, passw, (err) => {
         if (err) {
           er(err);
-          exit(1);
         } else {
           exit(0);
         }
@@ -402,7 +406,6 @@ if (arg === 'login') {
     var ls = [];
     if (err) {
       er(err);
-      exit(1);
     }
     if (frds.length > 0) {
       frds.forEach((frd) => {
@@ -421,19 +424,14 @@ if (arg === 'login') {
   db.get('name', (err, username) => {
     if (err) {
       er(err.message);
-      sock.disconnect();
-      exit(1);
     }
     db.get('tok', (err, tok) => {
       if (err) {
         er(err);
-        sock.disconnect();
-        exit(1);
       }
       sock.emit('authenticate', {token: tok}).on('authenticated', () => {
-        // create an elliptic curve Diffie-Hellman key exchange for this
-        // private chat session and generate the client dh public key 
-        // to send to the other client
+        // once authenticated, create an elliptic curve Diffie-Hellman key exchange for
+        // this chat session and generate the client dh public key to send to the other client
         const client_dh = crypto.createECDH('secp256k1');
         const clientkey = client_dh.generateKeys(encoding);
 
@@ -446,7 +444,6 @@ if (arg === 'login') {
             logout((err) => {
               if (err) {
                 er(err);
-                exit(1);
               }
               exit(0);
             });
@@ -462,7 +459,6 @@ if (arg === 'login') {
               gen_jwt({priv: Buffer.from(get_privkey()).toString(encoding), pub: Buffer.from(get_pubkey()).toString(encoding)}, (err, tok) => {
                 if (err) {
                   er(err);
-                  exit(1);
                 }
                 sock.emit('req-group-chat', {room: username, receivers: frds, token: tok});
                 log(col.italic(`a group chat request sent to your friends, waiting for a response..`));
@@ -471,7 +467,6 @@ if (arg === 'login') {
             });
           } catch(er) {
             er(er.message);
-            exit(1);
           }
         } else if (arg === undefined || arg === '') {
           log(col.italic('Your friends chat requests will be shown up here..'));
@@ -481,19 +476,16 @@ if (arg === 'login') {
           verify_tok(dat.token, dat.receiver, (err, decod) => {
             if (err) {
               er(err);
-              exit(1);
             }
             if (decod && decod.dh) {
               dh_sec = client_dh.computeSecret(decod.dh, encoding, encoding);
               db.put('dh_sec', dh_sec, (err) => {
                 if (err) {
                   er(err.message);
-                  exit(1);
                 }
                 gen_jwt({dh: clientkey}, (err, tok) => {
                   if (err) {
                     er(err);
-                    exit(1);
                   }
                   dat = Object.assign(dat, {token: tok});
                   sock.emit('priv-chat-sender-key', dat);
@@ -501,7 +493,6 @@ if (arg === 'login') {
               });
             } else {
               er('token not valid');
-              exit(1);
             }
           });
         }).on('req-priv-chat', (dat) => {
@@ -511,7 +502,6 @@ if (arg === 'login') {
               gen_jwt({dh: clientkey}, (err, tok) => {
                 if (err) {
                   er(err);
-                  exit(1);
                 }
                 dat = Object.assign(dat, {token: tok});
                 sock.emit('req-priv-chat-accept', dat);
@@ -526,14 +516,12 @@ if (arg === 'login') {
           verify_tok(dat.token, dat.sender, (err, decod) => {
             if (err) {
               er(err);
-              exit(1);
             }
             if (decod && decod.dh) {
               dh_sec = client_dh.computeSecret(decod.dh, encoding, encoding);
               db.put('dh_sec', dh_sec, (err) => {
                 if (err) {
                   er(err);
-                  exit(1);
                 }
                 sock.emit('priv-chat-key-exchanged', {
                   room: dat.room,
@@ -543,14 +531,12 @@ if (arg === 'login') {
               });
             } else {
               er('token not valid');
-              exit(1);
             }
           });
         }).on('priv-chat-ready', (dat) => {
           db.put('room', dat.room, (err) => {
             if (err) {
               er(err.message);
-              exit(1);
             } else {
               log(col.italic.green(`${dat.sender} and ${dat.receiver} are ready to have a private conversation`));
               rl.setPrompt(col.gray(`${username}: `));
@@ -562,27 +548,23 @@ if (arg === 'login') {
           verify_tok(dat.token, dat.sender, (err, decod) => {
             if (err) {
               er(err);
-              exit(1);
             }
             if (decod && decod.msg) {
               decrypt(decod.msg, (err, decrypted) => {
                 if (err) {
                   er(err);
-                  exit(1);
                 }
                 log(`${col.magenta(dat.sender)}: ${decrypted}`);
                 rl.prompt();
               });
             } else {
               er('token not valid');
-              exit(1);
             }
           }); 
         }).on('group-chat', (dat) => {
           verify_tok(dat.token, dat.room, (err, decod) => {
             if (err) {
               er(err);
-              exit(1);
             }
             if (decod && decod.priv && decod.pub) {
               log(col.italic.cyan(`${col.magenta(dat.room)} wants to add you to a group conversation.`));
@@ -602,11 +584,18 @@ if (arg === 'login') {
               });
             } else {
               er('token not valid');
-              exit(1);
             }
           });
         }).on('group-chat-reject', (dat) => {
           log(col.italic(`\n${col.magenta(dat.member)} rejected the offer`));
+          if (arg === '-g') {
+            rl.setPrompt(col.gray(`${username}: `));
+            rl.prompt();
+          }
+          if (dat.member !== username) {
+            rl.setPrompt(col.gray(`${username}: `));
+            rl.prompt();
+          }
         }).on('group-chat-accept', (dat) => {    
           log(col.italic.green(`\n${col.magenta(dat.member)} joined the group conversation`));    
           rl.setPrompt(col.gray(`${username}: `));
@@ -615,20 +604,17 @@ if (arg === 'login') {
           verify_tok(dat.token, dat.sender, (err, decod) => {
             if (err) {
               er(err);
-              exit(1);
             }
             if (decod && decod.msg) {
               decrypt_g(decod.msg, (err, decrypted) => {
                 if (err) {
                   er(err);
-                  exit(1);
                 }
                 log(`\n${col.magenta(dat.sender)}: ${decrypted}`);
                 rl.prompt();
               });
             } else {
               er('token not valid');
-              exit(1);
             }
           });
         });
@@ -641,23 +627,24 @@ if (arg === 'login') {
               // encrypt the group chat message
               db.get('groom', (err, groom) => {
                 if (err) {
-                  er(err);
-                  exit(1);
-                }
-                encrypt_g(msg, (err, enc_dat) => {
-                  if (err) {
-                    er(err);
-                    exit(1);
-                  }
-                  gen_jwt({msg: enc_dat}, (err, tok) => {
+                  // user rejected the offer
+                  // there is no groom in db, do nothing 
+                } else {
+                  // encrypt a group chat message
+                  encrypt_g(msg, (err, enc_dat) => {
                     if (err) {
                       er(err);
-                      exit(1);
                     }
-                    sock.emit('g-msg', {room: groom, sender: username, token: tok});
-                    rl.prompt();
+                    // generate jwt with encrypted data
+                    gen_jwt({msg: enc_dat}, (err, tok) => {
+                      if (err) {
+                        er(err);
+                      }
+                      sock.emit('g-msg', {room: groom, sender: username, token: tok});
+                      rl.prompt();
+                    });
                   });
-                });
+                }
               });
             } else {
               if (arg === '-p') {
@@ -667,16 +654,14 @@ if (arg === 'login') {
                 rec = room.split('-')[0];
                 sen = username;
               }
-              // encrypt the message and sign the message token
+              // encrypt a private message and sign the message token
               encrypt(msg, rec, (err, enc_dat) => {
                 if (err) {
                   er(err);
-                  exit(1);
                 }
                 gen_jwt({msg: enc_dat}, (err, tok) => {
                   if (err) {
                     er(err);
-                    exit(1);
                   }
                   sock.emit('priv-msg', {room: room, sender: sen, token: tok});
                   rl.prompt();
@@ -688,15 +673,12 @@ if (arg === 'login') {
           logout((err) => {
             if (err) {
               er(err);
-              exit(1);
             }
             exit(0);
           });
         });
       }).on('unauthorized', (msg) => {
-        er(`socket unauthorized: ${JSON.stringify(msg.data)}`);
-        er(msg.data.type);
-        exit(1);
+        er(`socket unauthorized: ${JSON.stringify(msg.data)} [err-type: msg.data.type]`);
       }); 
     });
   });

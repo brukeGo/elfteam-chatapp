@@ -364,6 +364,8 @@ function enc(msg, receiver, cb) {
       } catch(err) {
         return cb(err.message, null);
       } 
+    } else {
+      return cb('friend\'s public key not found');
     }
   });
 }
@@ -379,8 +381,7 @@ function dec(cipher_text, cb) {
 
   db.get('priv', (err, privkey) => {
     if (err) {
-      return cb(err.message, null);
-      //throw err.message;
+      return cb(err.message);
     }
     try {
       chunk = cipher_text.split('#');

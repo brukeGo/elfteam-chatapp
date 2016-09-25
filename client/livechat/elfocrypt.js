@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const levelup = require('levelup');
@@ -9,6 +10,12 @@ const readline = require('readline');
 const io = require('socket.io-client');
 const jwt = require('jsonwebtoken');
 const col = require('chalk');
+const exec = require('child_process').execSync;
+const rm = require('rimraf');
+const mkdirp = require('mkdirp');
+const tmp = path.join(__dirname, 'tmp');
+const privkey_path = path.join(tmp, 'priv.pem');
+const pubkey_path = path.join(tmp, 'pub.pem');
 const encoding = 'base64';
 const alg = 'aes-256-cbc';
 const hmac_alg = 'sha256';
@@ -18,16 +25,62 @@ const sock = io.connect('https://localhost.daplie.com:3761/live/auth');
 var db = levelup(path.resolve('..', 'db'));
 
 function er(error) {
-  console.error(`\nerror: ${error}`);
+  console.error(col.italic.red(`\nerror: ${error}`));
 }
 
 function log(info) {
-  console.log(`\n${info}`);
+  console.log(`${info}`);
 }
 
 function exit(code) {
   sock.disconnect();
   process.exit(code);
+}
+
+function gen_privkey() {
+  try {
+    exec(`openssl genrsa -out ${privkey_path} 2048`, {stdio: [0, 'pipe']});
+  } catch(err) {
+    throw err.message;
+  }
+  return;
+}
+
+/**
+ * calculate client's public key from RSA key
+ */
+
+function gen_pubkey() {
+  try {
+    exec(`openssl rsa -in ${privkey_path} -out ${pubkey_path} -outform PEM -pubout`, {stdio: [0, 'pipe']});
+  } catch(err) {
+    throw err.message;
+  }
+  return;
+}
+
+/**
+ * get private key read in from a pem encoded file
+ */
+
+function get_privkey() {
+  try {
+    return fs.readFileSync(privkey_path, 'utf8').trim();
+  } catch(err) {
+    throw err.message;
+  }
+}
+
+/**
+ * get public key read in from a pem encoded file
+ */
+
+function get_pubkey() {
+  try {
+    return fs.readFileSync(pubkey_path, 'utf8').trim();
+  } catch(err) {
+    throw err.message;
+  }
 }
 
 function gen_sign(data, cb) {
@@ -157,6 +210,83 @@ function decrypt(cipher_text, cb) {
   });
 }
 
+/**
+ * encrypt group chat message with group public key
+ */
+
+function encrypt_g(msg, cb) {
+  var msg_key, hmac_key, iv, hmac, tag, keys_encrypted, cipher, cipher_text;
+  db.get('gpub', (err, gpubkey) => {
+    if (err) {
+      return cb(err.message);
+    }  
+    try {
+      msg_key = crypto.randomBytes(32);
+      hmac_key = crypto.randomBytes(32);
+      iv = crypto.randomBytes(16); // 128 bits initialization vector
+      hmac = crypto.createHmac(hmac_alg, hmac_key);
+
+      // encrypt the message with random key and iv
+      cipher = crypto.createCipheriv(alg, msg_key, iv);
+      cipher_text = cipher.update(msg, 'utf8', encoding);
+      cipher_text += cipher.final(encoding);
+
+      // make sure both the cipher text and
+      // the iv are protected by hmac
+      hmac.update(cipher_text);
+      hmac.update(iv.toString(encoding));
+      tag = hmac.digest(encoding);
+
+      // encrypt concatenated msg and hmac keys with group public key
+      keys_encrypted = crypto.publicEncrypt(gpubkey, Buffer.from(`${msg_key.toString(encoding)}&${hmac_key.toString(encoding)}`));
+      // concatenate keys, cipher text, iv and hmac digest
+      return cb(null, `${keys_encrypted.toString(encoding)}#${cipher_text}#${iv.toString(encoding)}#${tag}`);
+    } catch(err) {
+      return cb(err.message);
+    }
+  });
+}
+
+/**
+ * decrypt a group message with group private key
+ */
+
+function decrypt_g(cipher_text, cb) {
+  var chunk, keys_encrypted, keys_dec, 
+    ct, iv, tag, msg_key, hmac_key, hmac,
+    computed_tag, decipher, decrypted;
+
+  db.get('gpriv', (err, gprivkey) => {
+    if (err) {
+      return cb(err.message);
+    }
+    try {
+      chunk = cipher_text.split('#');
+      keys_encrypted = Buffer.from(chunk[0], encoding);
+      ct = chunk[1];
+      iv = Buffer.from(chunk[2], encoding);
+      tag = chunk[3];
+      keys_dec = crypto.privateDecrypt(gprivkey, keys_encrypted).toString('utf8').split('&');
+      msg_key = Buffer.from(keys_dec[0], encoding);
+      hmac_key = Buffer.from(keys_dec[1], encoding);
+
+      hmac = crypto.createHmac(hmac_alg, hmac_key);
+      hmac.update(ct);
+      hmac.update(iv.toString(encoding));
+      computed_tag = hmac.digest(encoding);
+      if (computed_tag !== tag) {
+        return cb('integrity tag not valid');
+      }
+      decipher = crypto.createDecipheriv(alg, msg_key, iv);
+      decrypted = decipher.update(ct, encoding, 'utf8');
+      decrypted += decipher.final('utf8');
+      return cb(null, decrypted);
+    } catch(err) {
+      return cb(err.message);
+    }
+  });
+}
+
 function logout(cb) {  
   db.get('tok', (err, tok) => {
     if (err) {
@@ -167,8 +297,8 @@ function logout(cb) {
       er(err);
       return cb(err);
     }).on('logout-success', (dat) => {
-      db.batch().del('tok').del('session_dat').write(() => {
-        log(dat);
+      db.batch().del('tok').del('dh_sec').del('room').del('groom').del('gpriv').del('gpub').write(() => {
+        log(`\n${dat}`);
         return cb();
       });
     });  
@@ -321,9 +451,31 @@ if (arg === 'login') {
               exit(0);
             });
           });
+        } else if (arg === '-g') {
+          var frds = process.argv.slice(3, process.argv.length);
+          try {
+            rm.sync(tmp);
+            mkdirp.sync(tmp);
+            gen_privkey();
+            gen_pubkey();
+            db.batch().put('groom', username).put('gpriv', get_privkey()).put('gpub', get_pubkey()).write(() => {  
+              gen_jwt({priv: Buffer.from(get_privkey()).toString(encoding), pub: Buffer.from(get_pubkey()).toString(encoding)}, (err, tok) => {
+                if (err) {
+                  er(err);
+                  exit(1);
+                }
+                sock.emit('req-group-chat', {room: username, receivers: frds, token: tok});
+                log(col.italic(`a group chat request sent to your friends, waiting for a response..`));
+                rm.sync(tmp);
+              });
+            });
+          } catch(er) {
+            er(er.message);
+            exit(1);
+          }
         } else if (arg === undefined || arg === '') {
-          log(col.italic('Your friends private chat requests will be shown up here..'));
-        }  
+          log(col.italic('Your friends chat requests will be shown up here..'));
+        }
         sock.on('priv-chat-accept', (dat) => {  
           var dh_sec;
           verify_tok(dat.token, dat.receiver, (err, decod) => {
@@ -395,17 +547,20 @@ if (arg === 'login') {
             }
           });
         }).on('priv-chat-ready', (dat) => {
-          db.put('session_dat', JSON.stringify(dat), (err) => {
+          db.put('room', dat.room, (err) => {
             if (err) {
               er(err.message);
               exit(1);
             } else {
               log(col.italic.green(`${dat.sender} and ${dat.receiver} are ready to have a private conversation`));
+              /*
               if (arg === '-p') {
                 rl.setPrompt(col.gray(`${dat.sender}: `));
               } else if (arg === undefined || arg === '') {
                 rl.setPrompt(col.gray(`${dat.receiver}: `));
               }
+              */
+              rl.setPrompt(col.gray(`${username}: `));
               rl.prompt();
             }
           });
@@ -430,42 +585,111 @@ if (arg === 'login') {
               exit(1);
             }
           }); 
-        });
-        rl.on('line', (msg) => {
-          var dat, sen, rec;
-          db.get('session_dat', (err, session_dat) => {
+        }).on('group-chat', (dat) => {
+          verify_tok(dat.token, dat.room, (err, decod) => {
             if (err) {
               er(err);
               exit(1);
             }
-            try {
-              dat = JSON.parse(session_dat);
-            } catch(err) {
+            if (decod && decod.priv && decod.pub) {
+              log(col.italic.cyan(`${col.magenta(dat.room)} wants to add you to a group conversation.`));
+              log(col.italic.yellow(`members: ${dat.receivers}`));
+              dat = Object.assign(dat, {member: username});
+              rl.question(`Do you accept? [y/n] `, (ans) => {
+                if (ans.match(/^y(es)?$/i)) {
+                  db.batch().put('groom', dat.room).put('gpriv', Buffer.from(decod.priv, encoding).toString()).put('gpub', Buffer.from(decod.pub, encoding).toString()).write(() => {
+                    sock.emit('group-chat-accept', dat);
+                    rl.setPrompt(col.gray(`${username}: `));
+                    rl.prompt();
+                  });
+                } else {
+                  sock.emit('group-chat-reject', dat);
+                  log(col.italic(`a reject response sent to ${col.magenta(dat.room)}`));
+                }
+              });
+            } else {
+              er('token not valid');
+              exit(1);
+            }
+          });
+        }).on('group-chat-reject', (dat) => {
+          log(col.italic(`\n${col.magenta(dat.member)} rejected the offer`));
+        }).on('group-chat-accept', (dat) => {    
+          log(col.italic.green(`\n${col.magenta(dat.member)} joined the group conversation`));    
+          rl.setPrompt(col.gray(`${username}: `));
+          rl.prompt();
+        }).on('g-msg', (dat) => {
+          verify_tok(dat.token, dat.sender, (err, decod) => {
+            if (err) {
               er(err);
               exit(1);
             }
-            if (arg === '-p') {
-              rec = dat.receiver;
-              sen = dat.sender;
-            } else if (arg === undefined || arg === '') {
-              rec = dat.sender;
-              sen = dat.receiver;
-            }
-            // encrypt the message and sign the message token
-            encrypt(msg, rec, (err, enc_dat) => {
-              if (err) {
-                er(err);
-                exit(1);
-              }
-              gen_jwt({msg: enc_dat}, (err, tok) => {
+            if (decod && decod.msg) {
+              decrypt_g(decod.msg, (err, decrypted) => {
                 if (err) {
                   er(err);
                   exit(1);
                 }
-                sock.emit('priv-msg', {room: dat.room, sender: sen, token: tok});
+                log(`\n${col.magenta(dat.sender)}: ${decrypted}`);
                 rl.prompt();
               });
-            });
+            } else {
+              er('token not valid');
+              exit(1);
+            }
+          });
+        });
+
+        rl.on('line', (msg) => {
+          var sen, rec;
+          db.get('room', (err, room) => {
+            if (err) {
+              // app running on a group chat mode
+              // encrypt the group chat message
+              db.get('groom', (err, groom) => {
+                if (err) {
+                  er(err);
+                  exit(1);
+                }
+                encrypt_g(msg, (err, enc_dat) => {
+                  if (err) {
+                    er(err);
+                    exit(1);
+                  }
+                  gen_jwt({msg: enc_dat}, (err, tok) => {
+                    if (err) {
+                      er(err);
+                      exit(1);
+                    }
+                    sock.emit('g-msg', {room: groom, sender: username, token: tok});
+                    rl.prompt();
+                  });
+                });
+              });
+            } else {
+              if (arg === '-p') {
+                rec = frd;
+                sen = username;
+              } else if (arg === undefined || arg === '') {
+                rec = room.split('-')[0];
+                sen = username;
+              }
+              // encrypt the message and sign the message token
+              encrypt(msg, rec, (err, enc_dat) => {
+                if (err) {
+                  er(err);
+                  exit(1);
+                }
+                gen_jwt({msg: enc_dat}, (err, tok) => {
+                  if (err) {
+                    er(err);
+                    exit(1);
+                  }
+                  sock.emit('priv-msg', {room: room, sender: sen, token: tok});
+                  rl.prompt();
+                });
+              });
+            }
           });
         }).on('close', () => {
           logout((err) => {

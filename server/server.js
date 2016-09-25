@@ -178,33 +178,30 @@ io.on('connection', socketioJwt.authorize({
     sock.join(`${dat.sender}-${dat.receiver}`);
     dat = Object.assign(dat, {room: `${dat.sender}-${dat.receiver}`});
     sock.to(dat.receiver).emit('req-priv-chat', dat);
-  });
-
-  sock.on('req-priv-chat-reject', (dat) => {
+  }).on('req-priv-chat-reject', (dat) => {
     io.to(dat.sender).emit('req-chat-reject', dat);
-  });
-
-  sock.on('req-priv-chat-accept', (dat) => {
+  }).on('req-priv-chat-accept', (dat) => {
     sock.join(dat.room);
     sock.broadcast.to(dat.room).emit('priv-chat-accept', dat);
-  });
-
-  sock.on('priv-chat-sender-key', (dat) => {
+  }).on('priv-chat-sender-key', (dat) => {
     sock.broadcast.to(dat.room).emit('priv-chat-sender-pubkey', dat);
-  });
-
-  sock.on('priv-chat-key-exchanged', (dat) => {
+  }).on('priv-chat-key-exchanged', (dat) => {
     io.to(dat.room).emit('priv-chat-ready', dat);
-  });
-
-  sock.on('priv-msg', (dat) => {
+  }).on('priv-msg', (dat) => {
     sock.broadcast.to(dat.room).emit('priv-msg', dat);
-  });
-  sock.on('priv-msg-res', (dat) => {
-    sock.broadcast.to(dat.room).emit('priv-msg-res', dat);
-  });
-
-  sock.on('logout', (dat) => {
+  }).on('req-group-chat', (dat) => {
+    sock.join(dat.room);
+    dat.receivers.forEach((receiver) => {
+      sock.to(receiver).emit('group-chat', dat);
+    });
+  }).on('group-chat-reject', (dat) => {
+    sock.to(dat.room).emit('group-chat-reject', dat);
+  }).on('group-chat-accept', (dat) => {
+    sock.join(dat.room);
+    sock.broadcast.to(dat.room).emit('group-chat-accept', dat);
+  }).on('g-msg', (dat) => {
+    sock.broadcast.to(dat.room).emit('g-msg', dat);
+  }).on('logout', (dat) => {
     auth.logout(dat.token, sock.decoded_token.nam, (err) => {
       if (err) {
         log(err);

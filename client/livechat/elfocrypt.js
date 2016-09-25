@@ -9,6 +9,7 @@ const read = require('read');
 const readline = require('readline');
 const io = require('socket.io-client');
 const jwt = require('jsonwebtoken');
+const col = require('chalk');
 const encoding = 'base64';
 const alg = 'aes-256-cbc';
 const hmac_alg = 'sha256';
@@ -288,11 +289,11 @@ if (arg === 'login') {
       }
       sock.emit('authenticate', {token: tok}).on('authenticated', () => {  
         var rl = readline.createInterface({input: process.stdin, output: process.stdout});
-        log(`a private chat request sent to ${arg}, waiting for a response..`);
+        log(col.italic(`a private chat request sent to ${col.magenta(arg)}, waiting for a response..`));
 
         // send a private chat request to a friend
         sock.emit('req-chat', {sender: username, receiver: arg}).on('req-chat-reject', (dat) => {  
-          log(`${dat.receiver} rejected the offer`);
+          log(`${col.magenta(dat.receiver)} rejected the offer`);
           logout((err) => {
             if (err) {
               er(err);
@@ -334,15 +335,13 @@ if (arg === 'login') {
               er(err.message);
               exit(1);
             } else {
-              log(`${dat.sender} and ${dat.receiver} are ready to have a private conversation`);
-              rl.setPrompt(`${dat.sender}: `);
+              log(col.italic.green(`${dat.sender} and ${dat.receiver} are ready to have a private conversation`));
+              rl.setPrompt(col.gray(`${dat.sender}: `));
               rl.prompt();
             }
           });
-        });
-
-        sock.on('priv-msg-res', (dat) => {
-          console.log(`\n${dat.sender}: ${dat.msg}`);
+        }).on('priv-msg-res', (dat) => {
+          log(`${col.magenta(dat.sender)}: ${dat.msg}`);
           rl.prompt();
         });
 
@@ -386,11 +385,11 @@ if (arg === 'login') {
     }
     sock.emit('authenticate', {token: tok}).on('authenticated', () => {  
       var rl = readline.createInterface({input: process.stdin, output: process.stdout});
-      log('Your friends private chat requests will be shown up here when they received..');
+      log(col.italic('Your friends private chat requests will be shown up here when they received..'));
 
       // receive a private chat request from a friend  
       sock.on('req-priv-chat', (dat) => {
-        rl.question(`\n${dat.sender} wants to have a private conversation. Do you accept? [y/n] `, (ans) => {
+        rl.question(col.italic.cyan(`\n${col.magenta(dat.sender)} wants to have a private conversation. Do you accept? [y/n] `), (ans) => {
           if (ans.match(/^y(es)?$/i)) {  
             gen_jwt({dh: clientkey}, (err, tok) => {
               if (err) {
@@ -402,11 +401,10 @@ if (arg === 'login') {
             });
           } else {
             sock.emit('req-priv-chat-reject', dat);
-            log(`a reject response sent to ${dat.sender}`);
+            log(col.italic(`a reject response sent to ${col.magenta(dat.sender)}`));
           }
         });
-      });
-      sock.on('priv-chat-sender-pubkey', (dat) => {  
+      }).on('priv-chat-sender-pubkey', (dat) => {  
         var dh_sec;
         verify_tok(dat.token, dat.sender, (err, decod) => {
           if (err) {
@@ -431,22 +429,20 @@ if (arg === 'login') {
             exit(1);
           }
         });
-      }); 
-      sock.on('priv-chat-ready', (dat) => {  
+      }).on('priv-chat-ready', (dat) => {  
         db.put('session_dat', JSON.stringify(dat), (err) => {
           if (err) {  
             er(err.message);
             rl.close();
             exit(1);
           } else {
-            log(`${dat.sender} and ${dat.receiver} are ready to have a private conversation`);
-            rl.setPrompt(`${dat.receiver}: `);
+            log(col.italic.green(`${dat.sender} and ${dat.receiver} are ready to have a private conversation`));
+            rl.setPrompt(col.gray(`${dat.receiver}: `));
             rl.prompt();
           }
         });
-      });  
-      sock.on('priv-msg', (dat) => {
-        console.log(`\n${dat.sender}: ${dat.msg}`);
+      }).on('priv-msg', (dat) => {
+        log(`${col.magenta(dat.sender)}: ${dat.msg}`);
         rl.prompt();
       });
 

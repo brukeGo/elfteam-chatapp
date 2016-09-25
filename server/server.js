@@ -189,7 +189,6 @@ io.on('connection', socketioJwt.authorize({
     sock.broadcast.to(dat.room).emit('priv-chat-accepted', dat);
   });
 
-  // sender send his/her fresh diffie-hellman encrypted public key
   sock.on('priv-chat-sender-key', (dat) => {
     sock.broadcast.to(dat.room).emit('priv-chat-sender-pubkey', dat);
   });

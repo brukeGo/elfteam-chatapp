@@ -4,7 +4,6 @@
 const path = require('path');
 const crypto = require('crypto');
 const levelup = require('levelup');
-const async = require('async');
 const read = require('read');
 const readline = require('readline');
 const io = require('socket.io-client');
@@ -22,7 +21,7 @@ const sock = io.connect('https://localhost.daplie.com:3761/live/auth');
  * to send to the other client
  */
 
-const client_dh = crypto.createECDH('secp521r1');
+const client_dh = crypto.createECDH('secp256k1');
 const clientkey = client_dh.generateKeys(encoding);
 
 var db = levelup(path.resolve('..', 'db'));
@@ -57,12 +56,12 @@ function get_frds(cb) {
   var frds;
   db.get('frd', (err, val) => {
     if (err) {
-      return cb();
+      return cb(err.message);
     }
     try {
       frds = JSON.parse(val);
     } catch(er) {
-      return cb(er.message, null);
+      return cb(er.message);
     }
     if (frds.ls.length > 0) {
       return cb(null, frds.ls);
@@ -88,8 +87,7 @@ function get_frd_pubkey(frd_username, cb) {
 }
 
 function encrypt(msg, receiver, cb) {
-  var hmac_key, iv,
-    hmac, tag, key_encrypted, cipher, cipher_text;
+  var hmac_key, iv, hmac, tag, key_encrypted, cipher, cipher_text;
 
   get_frd_pubkey(receiver, (err, rec_pubkey) => {
     if (err) {
@@ -105,8 +103,8 @@ function encrypt(msg, receiver, cb) {
           iv = crypto.randomBytes(16); // initialization vector 128 bits
           hmac = crypto.createHmac(hmac_alg, hmac_key);
 
-          // encrypt the message with random iv
-          cipher = crypto.createCipheriv(alg, dh_sec, iv);
+          // encrypt the message with dh secret and random iv
+          cipher = crypto.createCipheriv(alg, Buffer.from(dh_sec, encoding), iv);
           cipher_text = cipher.update(msg, 'utf8', encoding);
           cipher_text += cipher.final(encoding);
 
@@ -115,13 +113,13 @@ function encrypt(msg, receiver, cb) {
           tag = hmac.digest(encoding);
 
           // encrypt the hmac key with receiver's public key
-          key_encrypted = crypto.publicEncrypt(rec_pubkey, Buffer.from(hmac_key.toString(encoding)));
+          key_encrypted = crypto.publicEncrypt(rec_pubkey, Buffer.from(hmac_key));
 
-        // concatenate key, cipher text, iv and hmac digest
-        return cb(null, `${key_encrypted.toString(encoding)}#${cipher_text}#${iv.toString(encoding)}#${tag}`);
-      } catch(err) {
-        return cb(err.message, null);
-      } 
+          // concatenate key, cipher text, iv and hmac digest
+          return cb(null, `${key_encrypted.toString(encoding)}#${cipher_text}#${iv.toString(encoding)}#${tag}`);
+        } catch(err) {
+          return cb(err.message, null);
+        } 
 
       });
     } else {
@@ -150,14 +148,14 @@ function decrypt(cipher_text, cb) {
         tag = chunk[3];
         hmac_key = crypto.privateDecrypt(privkey, key_encrypted);
 
-        hmac = crypto.createHmac(hmac_alg, hmac_key);
+        hmac = crypto.createHmac(hmac_alg, Buffer.from(hmac_key));
         hmac.update(ct);
         hmac.update(iv.toString(encoding));
         computed_tag = hmac.digest(encoding);
         if (computed_tag !== tag) {
           return cb('integrity tag not valid');
         }
-        decipher = crypto.createDecipheriv(alg, dh_sec, iv);
+        decipher = crypto.createDecipheriv(alg, Buffer.from(dh_sec, encoding), iv);
         decrypted = decipher.update(ct, encoding, 'utf8');
         decrypted += decipher.final('utf8');
         return cb(null, decrypted);
@@ -236,7 +234,7 @@ function verify_tok(token, frd, cb) {
       return cb(err);
     }
     // verify jwt asymmetric
-    jwt.verify(token, frd_pubkey, (err, decod) => {
+    jwt.verify(token, frd_pubkey, {algorithms: 'RS256'}, (err, decod) => {
       if (err) {
         return cb(err.message);
       } else {
@@ -277,6 +275,26 @@ if (arg === 'login') {
         }
       });
     });
+  });
+} else if (arg === 'ls') {
+  get_frds((err, frds) => {
+    var ls = [];
+    if (err) {
+      er(err);
+      exit(1);
+    }
+    if (frds.length > 0) {
+      frds.forEach((frd) => {
+        if (ls.indexOf(frd.name) === -1) {
+          ls.push(frd.name);
+        }
+      });
+      console.log(ls);
+      exit(0);
+    } else {
+      log('no friend found');
+      exit(0);
+    }
   });
 } else if (arg !== 'login' && arg !== undefined && arg !== '') {
   db.get('name', (err, username) => {
@@ -381,13 +399,19 @@ if (arg === 'login') {
               exit(1);
             }
             // encrypt the message and sign the message token
-            encrypt(msg, dat.receiver, (err, tok) => {
+            encrypt(msg, dat.receiver, (err, enc_dat) => {
               if (err) {
                 er(err);
                 exit(1);
               }
-              sock.emit('priv-msg', {room: dat.room, sender: dat.sender, token: tok});
-              rl.prompt();
+              gen_jwt({msg: enc_dat}, (err, tok) => {
+                if (err) {
+                  er(err);
+                  exit(1);
+                }
+                sock.emit('priv-msg', {room: dat.room, sender: dat.sender, token: tok});
+                rl.prompt();
+              });
             });
           });
         }).on('close', () => {
@@ -508,13 +532,19 @@ if (arg === 'login') {
             exit(1);
           }
           // encrypt and sign the message token
-          encrypt(msg, dat.sender, (err, tok) => {
+          encrypt(msg, dat.sender, (err, enc_dat) => {
             if (err) {
               er(err);
               exit(1);
             }
-            sock.emit('priv-msg-res', {room: dat.room, sender: dat.receiver, token: tok});
-            rl.prompt();
+            gen_jwt({msg: enc_dat}, (err, tok) => {
+              if (err) {
+                er(err);
+                exit(1);
+              }
+              sock.emit('priv-msg-res', {room: dat.room, sender: dat.receiver, token: tok});
+              rl.prompt();
+            });
           });
         });
       }).on('close', () => {

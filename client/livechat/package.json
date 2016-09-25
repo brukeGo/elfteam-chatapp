@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "description": "real-time private end-to-end encrypted chat messenger",
   "main": "elfocrypt.js",
+  "bin": {
+    "elfocrypt": "./elfocrypt.js"
+  },
   "keywords": [
     "encrypted",
     "message",

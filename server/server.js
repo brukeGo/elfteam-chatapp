@@ -141,8 +141,8 @@ app.use('/', router);
  */
 
 socket_io = require('socket.io')(server);
-login_io = socket_io.of('/live/login');
-io = socket_io.of('/live/auth');
+login_io = socket_io.of('/rt/login');
+io = socket_io.of('/rt/auth');
 
 login_io.on('connection', (sock) => {
   sock.on('login', (dat) => {

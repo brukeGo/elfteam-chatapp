@@ -21,7 +21,7 @@ const alg = 'aes-256-cbc';
 const hmac_alg = 'sha256';
 const arg = process.argv[2];
 const frd = process.argv[3];
-const sock = io.connect('https://localhost.daplie.com:3761/live/auth');
+const sock = io.connect('https://localhost.daplie.com:3761/rt/auth');
 var db = levelup(path.resolve('..', 'db'));
 
 function exit(code) {
@@ -329,7 +329,7 @@ function logout(cb) {
 }
 
 function login(usern, passw, cb) {
-  const login_sock = io.connect('https://localhost.daplie.com:3761/live/login');
+  const login_sock = io.connect('https://localhost.daplie.com:3761/rt/login');
   gen_sign(passw, (err, sig) => {  
     if (err) {
       login_sock.disconnect();

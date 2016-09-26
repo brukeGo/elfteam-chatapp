@@ -132,7 +132,9 @@ function get_frd_pubkey(frd_username, cb) {
 }
 
 /**
- * encrypt a private message with receiver's public key
+ * encrypt a private message with dh secret and random iv,
+ * encrypt hmac key with receiver's public key and return
+ * concatenated encrypted key, cipher text, iv and hmac digest
  */
 
 function encrypt(msg, receiver, cb) {
@@ -219,7 +221,7 @@ function decrypt(cipher_text, cb) {
 }
 
 /**
- * encrypt group chat message with group public key
+ * encrypt group chat message
  */
 
 function encrypt_g(msg, cb) {
@@ -449,8 +451,12 @@ if (arg === 'login') {
             });
           });
         } else if (arg === '-g') {
+          // client created a group chat to send to a list of friends
           var frds = process.argv.slice(3, process.argv.length);
           try {
+            // generate a fresh 2048 bits RSA key for this group chat,
+            // save it to db, put the keys in a jwt, sign the token with
+            // client's private key and send a group chat request
             rm.sync(tmp);
             mkdirp.sync(tmp);
             gen_privkey();
@@ -469,10 +475,16 @@ if (arg === 'login') {
             er(er.message);
           }
         } else if (arg === undefined || arg === '') {
+          // waiting for a chat request
           log(col.italic('Your friends chat requests will be shown up here..'));
         }
         sock.on('priv-chat-accept', (dat) => {  
           var dh_sec;
+          // private chat request accepted, verify token,
+          // compute the dh secret with friend's dh public key,
+          // store the dh secret in client's local db, put
+          // client's dh public key in a jwt, sign it and send
+          // the dh public key to his/her friend
           verify_tok(dat.token, dat.receiver, (err, decod) => {
             if (err) {
               er(err);
@@ -498,7 +510,10 @@ if (arg === 'login') {
         }).on('req-priv-chat', (dat) => {
           // receive a private chat request from a friend
           rl.question(col.italic.cyan(`\n${col.magenta(dat.sender)} wants to have a private conversation. Do you accept? [y/n] `), (ans) => {
-            if (ans.match(/^y(es)?$/i)) {  
+            if (ans.match(/^y(es)?$/i)) {
+              // private chat request accepted, put the client's dh public key
+              // in a jwt, sign the token asymmatric with client's private key
+              // and send the token to the chat requester
               gen_jwt({dh: clientkey}, (err, tok) => {
                 if (err) {
                   er(err);
@@ -507,12 +522,19 @@ if (arg === 'login') {
                 sock.emit('req-priv-chat-accept', dat);
               });
             } else {
+              // user rejected the private chat offer
+              // send a reject event to notify the other client
               sock.emit('req-priv-chat-reject', dat);
               log(col.italic(`a reject response sent to ${col.magenta(dat.sender)}`));
             }
           });
-        }).on('priv-chat-sender-pubkey', (dat) => {  
+        }).on('priv-chat-sender-pubkey', (dat) => {
           var dh_sec;
+          // chat requester's dh public key received, verify token
+          // with sender's (has to be one of client's friend) public key,
+          // if successful, compute the dh secret with friend's public key,
+          // store the dh secret in local db and send an event notifying
+          // keys successfully exchanged
           verify_tok(dat.token, dat.sender, (err, decod) => {
             if (err) {
               er(err);
@@ -534,6 +556,9 @@ if (arg === 'login') {
             }
           });
         }).on('priv-chat-ready', (dat) => {
+          // private chat dh keys exchanged successfully,
+          // store the room name in local db and set the prompt
+          // with client's name, ready to read messages from stdin
           db.put('room', dat.room, (err) => {
             if (err) {
               er(err.message);
@@ -544,7 +569,7 @@ if (arg === 'login') {
             }
           });
         }).on('priv-msg', (dat) => {
-          // verify token and decrypt the message
+          // verify private chat token and decrypt the message
           verify_tok(dat.token, dat.sender, (err, decod) => {
             if (err) {
               er(err);
@@ -562,6 +587,10 @@ if (arg === 'login') {
             }
           }); 
         }).on('group-chat', (dat) => {
+          // a group chat request received, sender should be one
+          // of client's friend, verify token with friend's public key,
+          // if successful, retrieve group private/public keys from jwt playload,
+          // store them in client's local db and send an event notifying group chat request accepted
           verify_tok(dat.token, dat.room, (err, decod) => {
             if (err) {
               er(err);
@@ -601,6 +630,9 @@ if (arg === 'login') {
           rl.setPrompt(col.gray(`${username}: `));
           rl.prompt();
         }).on('g-msg', (dat) => {
+          // a group chat message received, sender should be one of client's friend,
+          // verify token with friend's public key, if successful, decrypt the message
+          // and show it to the user
           verify_tok(dat.token, dat.sender, (err, decod) => {
             if (err) {
               er(err);
@@ -663,6 +695,7 @@ if (arg === 'login') {
                   if (err) {
                     er(err);
                   }
+                  // send a private chat message token
                   sock.emit('priv-msg', {room: room, sender: sen, token: tok});
                   rl.prompt();
                 });
@@ -670,6 +703,7 @@ if (arg === 'login') {
             }
           });
         }).on('close', () => {
+          // on close, logout
           logout((err) => {
             if (err) {
               er(err);
@@ -678,7 +712,7 @@ if (arg === 'login') {
           });
         });
       }).on('unauthorized', (msg) => {
-        er(`socket unauthorized: ${JSON.stringify(msg.data)} [err-type: msg.data.type]`);
+        er(`socket unauthorized: ${JSON.stringify(msg.data)} [err-type: ${msg.data.type}]`);
       }); 
     });
   });

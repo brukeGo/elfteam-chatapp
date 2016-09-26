@@ -38,6 +38,10 @@ function log(info) {
   console.log(`${info}`);
 }
 
+/**
+ * generate a fresh RSA key for a group chat
+ */
+
 function gen_privkey() {
   try {
     exec(`openssl genrsa -out ${privkey_path} 2048`, {stdio: [0, 'pipe']});
@@ -48,7 +52,7 @@ function gen_privkey() {
 }
 
 /**
- * calculate client's public key from RSA key
+ * calculate group chat public key from RSA key
  */
 
 function gen_pubkey() {
@@ -61,7 +65,7 @@ function gen_pubkey() {
 }
 
 /**
- * get private key read in from a pem encoded file
+ * get group chat private key read in from a pem encoded file
  */
 
 function get_privkey() {
@@ -73,7 +77,7 @@ function get_privkey() {
 }
 
 /**
- * get public key read in from a pem encoded file
+ * get group chat public key read in from a pem encoded file
  */
 
 function get_pubkey() {
@@ -83,6 +87,10 @@ function get_pubkey() {
     throw err.message;
   }
 }
+
+/**
+ * sign data with client's private key
+ */
 
 function gen_sign(data, cb) {
   var sign;
@@ -96,6 +104,10 @@ function gen_sign(data, cb) {
     return cb(null, sign.sign(privkey, encoding));
   });
 }
+
+/**
+ * get the list of client's friends
+ */
 
 function get_frds(cb) {
   var frds;
@@ -115,6 +127,10 @@ function get_frds(cb) {
     }
   });
 }
+
+/**
+ * get public key of a given client's friend from local db
+ */
 
 function get_frd_pubkey(frd_username, cb) {
   var frd_pubkey;
@@ -170,8 +186,7 @@ function encrypt(msg, receiver, cb) {
           return cb(null, `${key_encrypted.toString(encoding)}#${cipher_text}#${iv.toString(encoding)}#${tag}`);
         } catch(err) {
           return cb(err.message);
-        } 
-
+        }
       });
     } else {
       return cb('friend\'s public key not found');
@@ -182,10 +197,9 @@ function encrypt(msg, receiver, cb) {
 /**
  * decrypt a private message with client's private key
  */
-function decrypt(cipher_text, cb) {
-  var chunk, key_encrypted, ct, iv, tag,hmac_key, 
-    hmac, computed_tag, decipher, decrypted;
 
+function decrypt(cipher_text, cb) {
+  var chunk, key_encrypted, ct, iv, tag,hmac_key, hmac, computed_tag, decipher, decrypted;
   db.get('priv', (err, privkey) => {
     if (err) {
       return cb(err.message);
@@ -346,6 +360,11 @@ function login(usern, passw, cb) {
   });
 }
 
+/**
+ * generate a fresh jwt with a given data and sign the token
+ * asymmetric with client's private key
+ */
+
 function gen_jwt(dat, cb) {
   var tok;
   db.get('priv', (err, privkey) => {
@@ -358,6 +377,10 @@ function gen_jwt(dat, cb) {
     return cb(null, tok);
   });
 }
+
+/**
+ * verify a jwt with friend's public key
+ */
 
 function verify_tok(token, frd, cb) {
   get_frd_pubkey(frd, (err, frd_pubkey) => {
@@ -375,6 +398,7 @@ function verify_tok(token, frd, cb) {
   });
 }
 
+// on ^C, logout the client
 process.on('SIGINT', () => {
   logout((err) => {
     if (err) {
@@ -385,7 +409,7 @@ process.on('SIGINT', () => {
 });
 
 if (arg === 'login') {
-  console.log();
+  log('');
   read({prompt: 'username: '}, (err, usern) => {
     if (err) {
       er(err);
@@ -404,6 +428,7 @@ if (arg === 'login') {
     });
   });
 } else if (arg === 'ls') {
+  // show the client's friends list
   get_frds((err, frds) => {
     var ls = [];
     if (err) {

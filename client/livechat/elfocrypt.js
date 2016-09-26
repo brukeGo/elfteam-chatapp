@@ -155,7 +155,6 @@ function get_frd_pubkey(frd_username, cb) {
 
 function encrypt(msg, receiver, cb) {
   var hmac_key, iv, hmac, tag, key_encrypted, cipher, cipher_text;
-
   get_frd_pubkey(receiver, (err, rec_pubkey) => {
     if (err) {
       return cb(err);
@@ -456,6 +455,8 @@ if (arg === 'login') {
       if (err) {
         er(err);
       }
+      // get client's token from local db to send to the
+      // server to authenticate the client's socket
       sock.emit('authenticate', {token: tok}).on('authenticated', () => {
         // once authenticated, create an elliptic curve Diffie-Hellman key exchange for
         // this chat session and generate the client dh public key to send to the other client
@@ -505,26 +506,28 @@ if (arg === 'login') {
         }
         sock.on('priv-chat-accept', (dat) => {  
           var dh_sec;
-          // private chat request accepted, verify token,
-          // compute the dh secret with friend's dh public key,
-          // store the dh secret in client's local db, put
-          // client's dh public key in a jwt, sign it and send
-          // the dh public key to his/her friend
+          // private chat request accepted, verify token with friend's public key
           verify_tok(dat.token, dat.receiver, (err, decod) => {
             if (err) {
               er(err);
             }
             if (decod && decod.dh) {
+              // compute the dh secret with friend's dh public key
               dh_sec = client_dh.computeSecret(decod.dh, encoding, encoding);
+  
+              // store the dh secret in client's local db
               db.put('dh_sec', dh_sec, (err) => {
                 if (err) {
                   er(err.message);
                 }
+                // put client's dh public key in a jwt and sign it
                 gen_jwt({dh: clientkey}, (err, tok) => {
                   if (err) {
                     er(err);
                   }
                   dat = Object.assign(dat, {token: tok});
+          
+                  // send the client's dh public key to his/her friend
                   sock.emit('priv-chat-sender-key', dat);
                 });
               });
@@ -556,20 +559,21 @@ if (arg === 'login') {
         }).on('priv-chat-sender-pubkey', (dat) => {
           var dh_sec;
           // chat requester's dh public key received, verify token
-          // with sender's (has to be one of client's friend) public key,
-          // if successful, compute the dh secret with friend's public key,
-          // store the dh secret in local db and send an event notifying
-          // keys successfully exchanged
+          // with sender's public key (has to be one of client's friends)
           verify_tok(dat.token, dat.sender, (err, decod) => {
             if (err) {
               er(err);
             }
             if (decod && decod.dh) {
+              // if successful, compute the dh secret with friend's public key
               dh_sec = client_dh.computeSecret(decod.dh, encoding, encoding);
+              
+              // store the dh secret in local db
               db.put('dh_sec', dh_sec, (err) => {
                 if (err) {
                   er(err);
                 }
+                // send an event notifying keys successfully exchanged
                 sock.emit('priv-chat-key-exchanged', {
                   room: dat.room,
                   sender: dat.sender,
@@ -613,9 +617,7 @@ if (arg === 'login') {
           }); 
         }).on('group-chat', (dat) => {
           // a group chat request received, sender should be one
-          // of client's friend, verify token with friend's public key,
-          // if successful, retrieve group private/public keys from jwt playload,
-          // store them in client's local db and send an event notifying group chat request accepted
+          // of client's friends, verify token with friend's public key
           verify_tok(dat.token, dat.room, (err, decod) => {
             if (err) {
               er(err);
@@ -626,7 +628,12 @@ if (arg === 'login') {
               dat = Object.assign(dat, {member: username});
               rl.question(`Do you accept? [y/n] `, (ans) => {
                 if (ans.match(/^y(es)?$/i)) {
+                  // if token verified successfully and user accepted,
+                  // retrieve group private/public keys from jwt playload,
+                  // store them in client's local db
                   db.batch().put('groom', dat.room).put('gpriv', Buffer.from(decod.priv, encoding).toString()).put('gpub', Buffer.from(decod.pub, encoding).toString()).write(() => {
+                    // send an event notifying group chat request accepted
+                    // and set the prompt with client's name
                     sock.emit('group-chat-accept', dat);
                     rl.setPrompt(col.gray(`${username}: `));
                     rl.prompt();
@@ -650,12 +657,14 @@ if (arg === 'login') {
             rl.setPrompt(col.gray(`${username}: `));
             rl.prompt();
           }
-        }).on('group-chat-accept', (dat) => {    
+        }).on('group-chat-accept', (dat) => {
+          // notify the group chat requester that a friend accepted the offer and now
+          // is part of the group chat room
           log(col.italic.green(`\n${col.magenta(dat.member)} joined the group conversation`));    
           rl.setPrompt(col.gray(`${username}: `));
           rl.prompt();
         }).on('g-msg', (dat) => {
-          // a group chat message received, sender should be one of client's friend,
+          // a group chat message received, sender should be one of client's friends,
           // verify token with friend's public key, if successful, decrypt the message
           // and show it to the user
           verify_tok(dat.token, dat.sender, (err, decod) => {
@@ -681,10 +690,9 @@ if (arg === 'login') {
           db.get('room', (err, room) => {
             if (err) {
               // app running on a group chat mode
-              // encrypt the group chat message
               db.get('groom', (err, groom) => {
                 if (err) {
-                  // user rejected the offer
+                  // user already rejected the offer
                   // there is no groom in db, do nothing 
                 } else {
                   // encrypt a group chat message
@@ -697,6 +705,7 @@ if (arg === 'login') {
                       if (err) {
                         er(err);
                       }
+                      // send a group chat message token
                       sock.emit('g-msg', {room: groom, sender: username, token: tok});
                       rl.prompt();
                     });
@@ -728,7 +737,7 @@ if (arg === 'login') {
             }
           });
         }).on('close', () => {
-          // on close, logout
+          // logout when readline is closed
           logout((err) => {
             if (err) {
               er(err);
@@ -737,6 +746,7 @@ if (arg === 'login') {
           });
         });
       }).on('unauthorized', (msg) => {
+        // notify user with the err message and err type if socket unauthorized
         er(`socket unauthorized: ${JSON.stringify(msg.data)} [err-type: ${msg.data.type}]`);
       }); 
     });

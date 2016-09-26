@@ -43,6 +43,7 @@ function log(info) {
 
 /**
  * normalize a port into a number, string, or false.
+ * (it is an express default, keep it)
  */
 
 function normalizePort(val) {
@@ -64,7 +65,7 @@ function normalizePort(val) {
 var port = normalizePort(process.env.PORT || 3761);
 
 /**
- * 'error' event listener
+ * error event listener (it is an express default, keep it)
  */
 
 function onError(error) {
@@ -214,4 +215,3 @@ io.on('connection', socketioJwt.authorize({
     });
   });
 });
-

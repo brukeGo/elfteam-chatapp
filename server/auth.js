@@ -14,7 +14,7 @@ const jwtkey = crypto.randomBytes(256).toString(encoding);
 var db = levelup(path.join(__dirname, 'db'), {valueEncoding: 'json'});
 
 function log(info) {
-  console.log(`elfpm-server: ${info}`);
+  console.log(`elfocrypt-server: ${info}`);
 }
 
 /**

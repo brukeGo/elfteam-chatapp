@@ -80,8 +80,7 @@ function get_pubkey() {
 
 /**
  * sign data with user's private key before sending to server
- *
- * @return base64 signature of the given data
+ * and return base64 encoded signature of the given data
  */
 
 function gen_sign(data, cb) {
@@ -98,7 +97,7 @@ function gen_sign(data, cb) {
 }
 
 /**
- * return locally saved token for sending to server
+ * return locally saved token for sending to the server
  */
 
 function get_tok(cb) {
@@ -622,4 +621,3 @@ module.exports = {
   clear_unread: clear_unread,
   logout: logout
 };
-

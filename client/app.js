@@ -143,7 +143,6 @@ function load_chat() {
       login_win.reload();
     } else {
       chat_win.loadURL(chat_index);
-      //chat_win.webContents.openDevTools();
       chat_win.show();
     }
   });
@@ -173,7 +172,6 @@ app.on('activate', () => {
 
 ipcMain.on('load-reg', () => {
   reg_win.loadURL(reg_index);
-  //reg_win.webContents.openDevTools();
   reg_win.show();
 });
 
@@ -183,7 +181,6 @@ ipcMain.on('load-reg', () => {
 
 ipcMain.on('load-addfrd', () => {
   addfrd_win.loadURL(addfrd_index);
-  //addfrd_win.webContents.openDevTools();
   addfrd_win.show();
 });
 
@@ -389,4 +386,3 @@ process.on('uncaughtException', (err) => {
   console.log(`something unexpected happened: ${err}`);
   showerr(err.message);
 });
-

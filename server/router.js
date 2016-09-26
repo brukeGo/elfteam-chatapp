@@ -9,7 +9,7 @@ const router = express.Router();
 const auth = require('./auth.js');
 
 function log(info) {
-  console.log(`elfpm-server: ${info}`);
+  console.log(`elfocrypt-server: ${info}`);
 }
 
 /**
@@ -212,4 +212,3 @@ router.post('/auth/logout', (req, res, next) => {
 });
 
 module.exports = router;
-

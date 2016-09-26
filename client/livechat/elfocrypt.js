@@ -514,7 +514,7 @@ if (arg === 'login') {
             if (decod && decod.dh) {
               // compute the dh secret with friend's dh public key
               dh_sec = client_dh.computeSecret(decod.dh, encoding, encoding);
-  
+
               // store the dh secret in client's local db
               db.put('dh_sec', dh_sec, (err) => {
                 if (err) {
@@ -526,7 +526,7 @@ if (arg === 'login') {
                     er(err);
                   }
                   dat = Object.assign(dat, {token: tok});
-          
+
                   // send the client's dh public key to his/her friend
                   sock.emit('priv-chat-sender-key', dat);
                 });
@@ -567,7 +567,7 @@ if (arg === 'login') {
             if (decod && decod.dh) {
               // if successful, compute the dh secret with friend's public key
               dh_sec = client_dh.computeSecret(decod.dh, encoding, encoding);
-              
+
               // store the dh secret in local db
               db.put('dh_sec', dh_sec, (err) => {
                 if (err) {
@@ -752,4 +752,3 @@ if (arg === 'login') {
     });
   });
 }
-

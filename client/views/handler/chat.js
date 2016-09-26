@@ -142,4 +142,3 @@ logout_btn.addEventListener('click', (ev) => {
   ev.preventDefault();
   ipc.send('logout');
 });
-

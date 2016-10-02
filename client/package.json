@@ -24,6 +24,8 @@
   "homepage": "https://github.com/mawni/elfocrypt#readme",
   "dependencies": {
     "async": "^2.0.1",
+    "deep-assign": "^2.0.0",
+    "jsonwebtoken": "^7.1.9",
     "leveldown": "^1.4.6",
     "levelup": "^1.3.2",
     "mkdirp": "^0.5.1",

@@ -13,93 +13,41 @@ function log(info) {
 }
 
 /**
- * Get /search endpoint
- */
-
-router.get('/search', (req, res, next) => {
-  res.render('search', {err: null});
-});
-
-/**
  * Get homepage, in case someone hits the homepage
- * redirect to /search endpoint
+ * redirect to /reg endpoint
  */
 
 router.get('/', (req, res, next) => {
-  res.redirect('/search');
+  res.redirect('/reg');
 });
 
 /**
- * search username to send public key and its signature
+ * Get /reg endpoint
  */
 
-router.post('/search', (req, res, next) => {
-  var username = req.body.username;
-  if (username) {
-    auth.search(username, (err, user) => {
-      if (err) {
-        res.render('search', {err: `'${username}' not found.`});
-      }
-      if (user) {
-        res.json({
-          username: username,
-          public_key: user.pubkey,
-          public_key_signature: user.sig
-        });
-      }
-    });
-  } else {
-    res.render('search', {err: `'${username}' not found.`});
-  }
+router.get('/reg', (req, res, next) => {
+  res.render('reg', {err: null, info: null});
 });
 
 /**
- * handle POST request to register new user
+ * handle POST request to register a new user
  */
 
-router.post('/register', (req, res, next) => {
+router.post('/reg', (req, res, next) => {
   var username = req.body.un;
   var passw = req.body.pw;
-  if (username && passw) {
-    auth.register(username, passw, (err, tok) => {
+  if (username === '' || passw === '') {
+    res.render('reg', {err: 'invalid username/password', info: null});
+  } else if (username && passw) {
+    auth.register(username, passw, (err) => {
       if (err) {
-        res.json({err: err});
-      }
-      // successfully created a new account
-      // return the token to client
-      if (tok) {
-        res.json({token: tok});
-      }
-    });
-  } else {
-    res.json({err: 'invalid username/password'});
-  }
-});
-
-/**
- * handle POST request to /register/pubk endpoint
- * to get new user's public key and save it to db.
- * This is a protected route. it verifies token received
- * from the client in the http headers authorization.
- */
-
-router.post('/register/auth/pubk', (req, res, next) => {
-  var tok = req.headers.authorization;
-  var username = req.body.un;
-  var pubkey = req.body.pubkey;
-  var sig = req.body.sig;
-  if (tok && username && pubkey && sig) {
-    auth.save_pubkey(tok, username, pubkey, sig, (err) => {
-      if (err) {
-        log(err);
-        res.json({err: err});
+        res.render('reg', {err: err, info: null});
       } else {
-        res.json({err: null});
+        res.render('reg', {err: null, info: `'${username}' created successfully`});
       }
     });
   } else {
-    log('token/username/pubkey not valid');
-    res.json({err: 'token and/or username and/or public key not valid'});
+    res.render('reg', {err: 'invalid username/password', info: null});
   }
 });
 
@@ -110,8 +58,7 @@ router.post('/register/auth/pubk', (req, res, next) => {
 router.post('/login', (req, res, next) => {
   var usern = req.body.un;
   var passw = req.body.pw;
-  var passw_sig = req.body.pw_sig;
-  auth.login(usern, passw, passw_sig, (err, tok) => {
+  auth.login(usern, passw, (err, tok) => {
     if (err) {
       res.json({err: err});
     }
@@ -122,20 +69,128 @@ router.post('/login', (req, res, next) => {
 });
 
 /**
+ * handle post request when user sends a friend request
+ */
+
+router.post('/auth/send_frd_req', (req, res, next) => {
+  var tok = req.headers.authorization;
+  var sender = req.body.sen;
+  var receiver = req.body.rec;
+  var frd_tok = req.body.tok;
+  if (tok && sender && receiver && frd_tok) {
+    auth.send_frd_req(tok, sender, receiver, frd_tok, (err) => {
+      if (err) {
+        res.json({err: err});
+      } else {
+        res.json({err: null});
+      }
+    });
+  } else {
+    log('token/username not valid');
+    res.json({err: 'token/username not valid'});
+  }
+});
+
+/**
+ * handle post request when user fetches friend requests
+ */
+
+router.post('/auth/get_frd_req', (req, res, next) => {
+  var tok = req.headers.authorization;
+  var un = req.body.sen;
+  if (tok && un) {
+    auth.get_frd_req(tok, un, (err, req) => {
+      if (err) {
+        res.json({err: err});
+      } else {
+        res.json({frd_req: req});
+      }
+    });
+  } else {
+    log('token/username not valid');
+    res.json({err: 'token/username not valid'});
+  }
+});
+
+router.post('/auth/get_frd_rej', (req, res, next) => {
+  var tok = req.headers.authorization;
+  var un = req.body.sen;
+  if (tok && un) {
+    auth.get_frd_rej(tok, un, (err, rej) => {
+      if (err) {
+        res.json({err: err});
+      } else {
+        res.json({frd_rej: rej});
+      }
+    });
+  } else {
+    log('token/username not valid');
+    res.json({err: 'token/username not valid'});
+  }
+});
+
+router.post('/auth/clear_frd_req', (req, res, next) => {
+  var tok = req.headers.authorization;
+  var username = req.body.sen;
+  if (tok && username) {
+    auth.clear_frd_req(tok, username, (err) => {
+      if (err) {
+        log(err);
+        res.json({err: err});
+      } else {
+        res.json({err: null});
+      }
+    });
+  }
+});
+
+router.post('/auth/clear_frd_rej', (req, res, next) => {
+  var tok = req.headers.authorization;
+  var username = req.body.sen;
+  if (tok && username) {
+    auth.clear_frd_rej(tok, username, (err) => {
+      if (err) {
+        log(err);
+        res.json({err: err});
+      } else {
+        res.json({err: null});
+      }
+    });
+  }
+});
+
+router.post('/auth/rej_frd_req', (req, res, next) => {
+  var tok = req.headers.authorization;
+  var un = req.body.sen;
+  var frd = req.body.frd;
+  if (tok && un && frd) {
+    auth.rej_frd_req(tok, un, frd, (err, reqs) => {
+      if (err) {
+        res.json({err: err});
+      } else {
+        res.json({err: null});
+      }
+    });
+  } else {
+    log('token/username not valid');
+    res.json({err: 'token/username not valid'});
+  }
+});
+
+/**
  * handle post request when client sends a message
  */
 
 router.post('/auth/msg', (req, res, next) => {
   var tok = req.headers.authorization;
-  var sender = req.body.sender;
+  var sender = req.body.sen;
   var receiver = req.body.rec;
-  var msg = req.body.msg;
+  var msg_tok = req.body.tok;
 
-  if (tok && sender && receiver && msg) {
-    // validate received data and save the msg to 
+  if (tok && sender && receiver && msg_tok) {
+    // validate received data and save the msg token to 
     // receiver's db record for pushing it to client
-    // the next time gets online
-    auth.handle_msg(tok, sender, receiver, msg, (err) => {
+    auth.handle_msg(tok, sender, receiver, msg_tok, (err) => {
       if (err) {
         res.json({err: err});
       } else {
@@ -154,9 +209,9 @@ router.post('/auth/msg', (req, res, next) => {
 
 router.post('/auth/unread', (req, res, next) => {
   var tok = req.headers.authorization;
-  var username = req.body.un;
+  var username = req.body.sen;
   if (tok && username) {
-    // check for client's unread messages
+    // get client's unread messages
     auth.get_unread(tok, username, (err, unread) => {
       if (err) {
         res.json({err: err});
@@ -179,7 +234,7 @@ router.post('/auth/unread', (req, res, next) => {
 
 router.post('/auth/clear_unread', (req, res, next) => {
   var tok = req.headers.authorization;
-  var username = req.body.un;
+  var username = req.body.sen;
   if (tok && username) {
     auth.clear_unread(tok, username, (err) => {
       if (err) {
@@ -198,7 +253,7 @@ router.post('/auth/clear_unread', (req, res, next) => {
 
 router.post('/auth/logout', (req, res, next) => {
   var tok = req.headers.authorization;
-  var username = req.body.un;
+  var username = req.body.sen;
   if (tok && username) {
     auth.logout(tok, username, (err) => {
       if (err) {

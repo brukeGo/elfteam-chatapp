@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>elfocrypt - verify friend request</title>
+    <link rel="stylesheet" href="../resources/css/bootstrap.min.css">
+    <link rel="stylesheet" href="../resources/css/style.css">
+  </head>
+  <body>
+    <form class="form">
+      <label class="searchlink">Please enter your friend's username and shared secret. No one should know about this secret except you and your friend.</label>
+      <div class="form-group">
+        <input id="usern" type="text" class="form-control" placeholder="friend username.." autofocus>
+      </div>
+      <div class="form-group">
+        <input id="sec" type="text" class="form-control" placeholder="shared secret..">
+      </div>
+      <div class="form-actions">
+        <button id="veri-btn" type="submit" class="btn btn-success">Verify</button>
+      </div>
+    </form>
+    <script>require('./handler/getfrd.js')</script>
+  </body>
+</html>

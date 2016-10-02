@@ -17,27 +17,6 @@ function log(info) {
   console.log(`elfocrypt-server: ${info}`);
 }
 
-/**
- * search for a given username and return public key
- * and its signature if found, otherwise return not found err
- */
-
-function search(username, cb) {
-  db.get(username, (err, user) => {
-    if (err) {
-      return cb(err.message);
-    }
-    if (user.pubkey && user.sig) {
-      return cb(null, {
-        pubkey: user.pubkey,
-        sig: user.sig
-      });
-    } else {
-      return cb(`'${username} not found.'`);
-    }
-  });
-}
-
 /*
  * create json web token for a given username,
  * sign it with server's jwtkey and return
@@ -45,8 +24,8 @@ function search(username, cb) {
  */
 
 function gen_jwt(username) {
-  // by default, expire the token after 24 hours (time is in secs)
-  const expire_def = Math.floor(new Date().getTime()/1000) + 60*1440;
+  // by default, expire the token after 60 mins (time is in secs)
+  const expire_def = Math.floor(new Date().getTime()/1000) + 60*60;
   return jwt.sign({
     nam: username,
     iat: new Date().getTime(),
@@ -99,51 +78,69 @@ function validate_token(token, username, cb) {
  */
 
 function register(username, passw, cb) {
-  var tok;
   // make sure username is unique
   db.get(username, (err) => {
     if (err) {
-      // username is unique, generate jwt for register
-      // authentication and save it to db
-      tok = gen_jwt(username);
+      // username is unique, save it to db
       db.put(username, {
-        password: passw,
-        token: tok,
-        unread: []
+        pw: passw,
+        unread: [],
+        frd_req: {},
+        frd_rej: ''
       }, (err) => {
         if (err) {
           log(err.message);
-          return cb(err.message, null);
+          return cb(err.message);
         }
         log(`${username} saved to db successfully`);
-        return cb(null, tok);
+        return cb();
       });
     } else {
-      return cb(`'${username}' already taken. Please choose another one`, null);
+      return cb(`'${username}' already taken. Please choose another one`);
     }
   });
 }
 
 /**
- * validate register jwt and store user's public key in db
+ * authenticate a returning user (login api route)
  */
 
-function save_pubkey(token, username, pubkey, sig, cb) {
-  // validate the token received from client
-  validate_token(token, username, (err, valid) => {
+function login(username, passw, cb) {
+  db.get(username, (err, user) => {
+    var tok;
+    if (err) {
+      return cb(err.message);
+    }
+    if (user.pw === passw) {  
+      tok = gen_jwt(username);
+      user = Object.assign(user, {token: tok});
+      db.put(username, user, (err) => {
+        if (err) {
+          log(err);
+          return cb(err.message);
+        }
+        return cb(null, tok);
+      });
+    } else {
+      return cb('invalid password');
+    }
+  });
+}
+
+function send_frd_req(tok, sen, rec, frd_tok, cb) {
+  validate_token(tok, sen, (err, valid) => {
     if (err) {
       return cb(err);
     }
-    // if jwt is valid, delete register token (for login we generate new token),
-    // then save user's public key and its signature to db
     if (valid) {
-      db.get(username, (err, user) => {
+      db.get(rec, (err, user) => {
         if (err) {
           return cb(err.message);
         }
-        user = Object.assign(user, {token: null, pubkey: pubkey, sig: sig});
-        db.put(username, user, (err) => {
+        user.frd_req = {sen: sen, tok: frd_tok};
+        db.put(rec, user, (err) => {
           if (err) {
+            log(err);
             return cb(err.message);
           }
           return cb();
@@ -155,42 +152,113 @@ function save_pubkey(token, username, pubkey, sig, cb) {
   });
 }
 
-/**
- * authenticate a returning user (login api route)
- */
-
-function login(username, passw, passw_sig, cb) {
-  const veri = crypto.createVerify('RSA-SHA256');
-  var tok, valid;
-  db.get(username, (err, user) => {
+function get_frd_req(tok, un, cb) {
+  validate_token(tok, un, (err, valid) => {
     if (err) {
-      return cb(err.message);
+      return cb(err);
     }
-    if (user.password === passw && user.pubkey) {
-      try {
-        veri.write(passw);
-        veri.end();
-        // verify password and its signature, if successful
-        // generate jwt, save it to db and send it to client
-        valid = veri.verify(Buffer.from(user.pubkey, encoding).toString(), passw_sig, encoding);
-      } catch(err) {
-        return cb(err.message, null);
-      }
-      if (valid) {
-        tok = gen_jwt(username);
-        user = Object.assign(user, {token: tok});
+    if (valid) {
+      db.get(un, (err, user) => {
+        if (err) {
+          return cb(err.message);
+        }
+        return cb(null, user.frd_req);
+      });
+    } else {
+      return cb('invalid token');
+    }
+  });
+}
+
+function get_frd_rej(tok, un, cb) {
+  validate_token(tok, un, (err, valid) => {
+    if (err) {
+      return cb(err);
+    }
+    if (valid) {
+      db.get(un, (err, user) => {
+        if (err) {
+          return cb(err.message);
+        }
+        return cb(null, user.frd_rej);
+      });
+    } else {
+      return cb('invalid token');
+    }
+  });
+}
+
+function rej_frd_req(tok, un, frd, cb) {
+  validate_token(tok, un, (err, valid) => {
+    if (err) {
+      return cb(err);
+    }
+    if (valid) {
+      db.get(frd, (err, user) => {
+        if (err) {
+          return cb(err.message);
+        }
+        user.frd_rej = un;
+        db.put(frd, user, (err) => {   
+          if (err) {
+            log(err);
+            return cb(err.message);
+          }
+          return cb();
+        });
+      });
+    } else {
+      return cb('username/token not valid');
+    }
+  });
+}
+
+function clear_frd_req(token, username, cb) {
+  validate_token(token, username, (err, valid) => {
+    if (err) {
+      return cb(err);
+    }
+    if (valid) {
+      db.get(username, (err, user) => {
+        if (err) {
+          return cb(err.message);
+        }
+        user.frd_req = {};  
         db.put(username, user, (err) => {
           if (err) {
             log(err);
-            return cb(err.message, null);
+            return cb(err);
           }
-          return cb(null, tok);
+          return cb();
         });
-      } else {
-        return cb('error: password/signature not valid', null);
-      }
-    } else {  
-      return cb('err: password/signature not valid', null);
+      });
+    } else {
+      return cb('username/token not valid');
+    }
+  });
+}
+
+function clear_frd_rej(token, username, cb) {
+  validate_token(token, username, (err, valid) => {
+    if (err) {
+      return cb(err);
+    }
+    if (valid) {
+      db.get(username, (err, user) => {
+        if (err) {
+          return cb(err.message);
+        }
+        user.frd_rej = '';
+        db.put(username, user, (err) => {
+          if (err) {
+            log(err);
+            return cb(err);
+          }
+          return cb();
+        });
+      });
+    } else {
+      return cb('username/token not valid');
     }
   });
 }
@@ -199,7 +267,7 @@ function login(username, passw, passw_sig, cb) {
  * handle getting a message from a client to send it to other client
  */
 
-function handle_msg(tok, sender, receiver, msg, cb) {
+function handle_msg(tok, sender, receiver, msg_tok, cb) {
   var d;
   validate_token(tok, sender, (err, valid) => {
     if (err) {
@@ -211,7 +279,7 @@ function handle_msg(tok, sender, receiver, msg, cb) {
           return cb(err.message);
         }
         d = new Date(); 
-        user.unread.push({sender: sender, msg: msg, time: `${d.getHours()}:${d.getMinutes()}`});
+        user.unread.push({sen: sender, tok: msg_tok, time: `${d.getHours()}:${d.getMinutes()}`});
         db.put(receiver, user, (err) => {   
           if (err) {
             log(err);
@@ -317,9 +385,13 @@ function logout(token, username, cb) {
 module.exports = {
   jwtkey: jwtkey,
   register: register,
-  save_pubkey: save_pubkey,
   login: login,
-  search: search,
+  send_frd_req: send_frd_req,
+  get_frd_req: get_frd_req,
+  get_frd_rej: get_frd_rej,
+  rej_frd_req: rej_frd_req,
+  clear_frd_req: clear_frd_req,
+  clear_frd_rej: clear_frd_rej,
   handle_msg: handle_msg,
   get_unread: get_unread,
   clear_unread: clear_unread,

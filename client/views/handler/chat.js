@@ -9,6 +9,7 @@ var msg = document.getElementById('msg-inp');
 var send_btn = document.getElementById('send-btn');
 var msg_ul = document.getElementById('msg-list');
 var logout_btn = document.getElementById('logout-btn');
+var frd_req_btn = document.getElementById('frd-req-btn');
 
 /**
  * append a new friend to friend list
@@ -75,22 +76,17 @@ function create_li_msg(username, msg, time, own) {
   return;
 }
 
-/**
- * add friend button click listener
- */
-
-add_btn.addEventListener('click', (ev) => { 
-  ev.preventDefault();
-  ipc.send('load-addfrd');
-});
-
 ipc.send('frd-ls');
-
 // show friend list
 ipc.on('frd-ls-success', (ev, frds) => {
   if (frds) {
     append_frd_list(frds);
   }
+});
+
+add_btn.addEventListener('click', (ev) => { 
+  ev.preventDefault();
+  ipc.send('load-sendfrd');
 });
 
 // send button click listener
@@ -103,35 +99,45 @@ send_btn.addEventListener('click', (ev) => {
   }
 });
 
-ipc.on('send-msg-success', (ev, arg) => {
-  if (arg.un && arg.msg && arg.time) {
-    create_li_msg(arg.un, arg.msg, arg.time, true);
+ipc.on('send-msg-success', (ev, dat) => {
+  if (dat.un && dat.msg && dat.time) {
+    create_li_msg(dat.un, dat.msg, dat.time, true);
   }
 });
 
-ipc.send('check-unread');
-ipc.on('check-unread-success', (ev, msgs) => {
-  if (msgs && msgs.length) {
-    var badge = document.createElement('span');
-    var unread_btn = document.getElementById('unread-btn');
-    badge.className += 'badge';
-    badge.appendChild(document.createTextNode(msgs.length));
-    unread_btn.appendChild(badge);
-    unread_btn.style.display = 'inline-block';
-    unread_btn.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      msgs.forEach((unread) => {
-        if (unread.sender && unread.msg && unread.time) {
-          create_li_msg(unread.sender, unread.msg, unread.time, false);
-        }
-      });
-      if (unread_btn !== null && badge !== null) {
-        unread_btn.removeChild(badge);
-        unread_btn.style.display = 'none';
-        ipc.send('clear-unread');
+ipc.send('fetch-unread');
+ipc.on('fetch-unread-success', (ev, msgs) => {
+    msgs.forEach((unread) => {
+      if (unread.sen && unread.msg && unread.time) {
+        create_li_msg(unread.sen, unread.msg, unread.time, false);
       }
     });
-  }
+});
+
+ipc.send('fetch-frd-req');
+ipc.on('fetch-frd-req-success', () => {
+  frd_req_btn.appendChild(document.createTextNode('friend request'));
+  frd_req_btn.style.display = 'inline-block';
+  frd_req_btn.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ipc.send('show-frd-req');
+    if (frd_req_btn !== null) {
+      frd_req_btn.style.display = 'none';
+    }
+  });
+});
+
+ipc.send('fetch-frd-rej');
+ipc.on('check-frd-rej-success', () => {
+  frd_req_btn.appendChild(document.createTextNode('friend reject'));
+  frd_req_btn.style.display = 'inline-block';
+  frd_req_btn.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ipc.send('show-frd-rej');
+    if (frd_req_btn !== null) {
+      frd_req_btn.style.display = 'none';
+    }
+  });
 });
 
 /**
@@ -142,3 +148,4 @@ logout_btn.addEventListener('click', (ev) => {
   ev.preventDefault();
   ipc.send('logout');
 });
+

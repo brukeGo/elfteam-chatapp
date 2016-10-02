@@ -14,10 +14,10 @@ const auth = require('./auth.js');
  * view files paths
  */
 
-const reg_index = `file://${__dirname}/views/register.html`;
 const login_index = `file://${__dirname}/views/login.html`;
 const chat_index = `file://${__dirname}/views/chat.html`;
-const addfrd_index = `file://${__dirname}/views/addfrd.html`;
+const getfrd_index = `file://${__dirname}/views/get_frd_req.html`;
+const sendfrd_index = `file://${__dirname}/views/send_frd_req.html`;
 
 /**
  * keep the reference to the main window.
@@ -25,10 +25,14 @@ const addfrd_index = `file://${__dirname}/views/addfrd.html`;
  * javascript garbage collector.
  */
 
-var reg_win = null;
 var login_win = null;
 var chat_win = null;
-var addfrd_win = null;
+var sendfrd_win = null;
+var getfrd_win = null;
+
+var frd_req_timer;
+var frd_rej_timer;
+var unread_timer;
 
 /**
  * show error message
@@ -81,21 +85,8 @@ function create_win() {
     login_win = null;
   });
 
-  // register window
-  reg_win = new BrowserWindow({
-    width: 600,
-    height: 400,
-    'min-width': 400,
-    'min-height': 200,
-    icon: iconpath,
-    show: false
-  });
-  reg_win.on('closed', () => {
-    reg_win = null;
-  });
-
-  // add friend window
-  addfrd_win = new BrowserWindow({
+  // verify friend window
+  getfrd_win = new BrowserWindow({
     width: 700,
     height: 500,
     'min-width': 400,
@@ -103,8 +94,21 @@ function create_win() {
     icon: iconpath,
     show: false
   });
-  addfrd_win.on('closed', () => {
-    addfrd_win = null;
+  getfrd_win.on('closed', () => {
+    getfrd_win = null;
+  });
+
+  // friend request window
+  sendfrd_win = new BrowserWindow({
+    width: 700,
+    height: 500,
+    'min-width': 400,
+    'min-height': 200,
+    icon: iconpath,
+    show: false
+  });
+  sendfrd_win.on('closed', () => {
+    sendfrd_win = null;
   });
 
   // chat window, authenticated route
@@ -118,8 +122,11 @@ function create_win() {
   });
 
   chat_win.on('closed', () => {
-    if (addfrd_win !== null) {
-      addfrd_win.close();
+    if (getfrd_win !== null) {
+      getfrd_win.close();
+    }
+    if (sendfrd_win !== null) {
+      sendfrd_win.close();
     }
     auth.logout((err) => {
       if (err) {
@@ -137,15 +144,22 @@ function create_win() {
  */
 
 function load_chat() {    
-  auth.fetch_unread((err) => {
-    if (err) {
-      showerr(err);
-      login_win.reload();
-    } else {
-      chat_win.loadURL(chat_index);
-      chat_win.show();
-    }
-  });
+  chat_win.loadURL(chat_index);
+  //chat_win.webContents.openDevTools();
+  chat_win.show();
+}
+
+function load_sendfrd() {
+  sendfrd_win.loadURL(sendfrd_index);
+  //sendfrd_win.webContents.openDevTools();
+  sendfrd_win.show();
+}
+
+function load_verify_frd() {
+  getfrd_win.loadURL(getfrd_index);
+  //getfrd_win.webContents.openDevTools();
+  getfrd_win.show();
+  getfrd_win.focus();
 }
 
 app.on('ready', create_win);
@@ -167,30 +181,11 @@ app.on('activate', () => {
 });
 
 /**
- * load register (create account) window
- */
-
-ipcMain.on('load-reg', () => {
-  reg_win.loadURL(reg_index);
-  reg_win.show();
-});
-
-/**
  * load add friend window
  */
 
-ipcMain.on('load-addfrd', () => {
-  addfrd_win.loadURL(addfrd_index);
-  addfrd_win.show();
-});
-
-/**
- * reload register window on error
- */
-
-ipcMain.on('reg-err', (event, err) => {
-  showerr(err);
-  reg_win.reload();
+ipcMain.on('load-sendfrd', () => {
+  load_sendfrd();
 });
 
 /**
@@ -202,13 +197,18 @@ ipcMain.on('login-err', (event, err) => {
   login_win.reload();
 });
 
+ipcMain.on('sendfrd-err', (event, err) => {
+  showerr(err);
+  sendfrd_win.reload();
+});
+
 /**
  * reload add friend window on error
  */
 
-ipcMain.on('addfrd-err', (event, err) => {
+ipcMain.on('getfrd-err', (event, err) => {
   showerr(err);
-  addfrd_win.reload();
+  getfrd_win.reload();
 });
 
 /**
@@ -218,30 +218,6 @@ ipcMain.on('addfrd-err', (event, err) => {
 ipcMain.on('chat-err', (event, err) => {
   showerr(err);
   chat_win.reload();
-});
-
-/**
- * make a request to /register endpoint
- * if successful, load login window
- */
-
-ipcMain.on('request-reg', (ev, dat) => {
-  if (dat.usern && dat.passw) {
-    auth.register(dat.usern, dat.passw, (err) => {
-      if (err) {
-        showerr(err);
-        reg_win.reload();
-      } else {
-        showinfo('Your keys and account created successfully. You can login now');
-        if (reg_win !== null) {
-          reg_win.close();
-        }
-        login_win.focus();
-      }
-    });
-  } else {
-    showerr('username/password not valid');
-  }
 });
 
 /**
@@ -271,27 +247,109 @@ ipcMain.on('request-login', (ev, dat) => {
  * add new friend event
  */
 
-ipcMain.on('add-frd', (ev, dat) => {
-  if (dat.frd_usern && dat.frd_pubkey && dat.frd_sig) {  
-    if (!auth.verify_pubkey(dat.frd_pubkey, dat.frd_sig)) {
-      showerr('Public key/signature not verified');
-      addfrd_win.reload();
-    } else {
-      auth.add_frd(dat.frd_usern, dat.frd_pubkey, (err) => {
+ipcMain.on('send-frd-req', (ev, dat) => {
+  if (dat.frd_un && dat.sec) {
+    auth.send_frd_req(dat.frd_un, dat.sec, (err) => {
+      if (err) {
+        showerr(err);
+        sendfrd_win.reload();
+      } else {
+        if (sendfrd_win !== null) {
+          sendfrd_win.hide();
+        }
+      }
+    });
+  } else {
+    showerr('invalid username/secret');
+    chat_win.reload();
+  }
+});
+
+ipcMain.on('fetch-frd-req', (ev) => {
+  frd_req_timer = setInterval(() => {
+    auth.fetch_frd_req((err, req) => {
+      if (err) {
+        showerr(err);
+        chat_win.reload();
+      }
+      if (req) {
+        ev.sender.send('fetch-frd-req-success');
+      }
+    });
+  }, 5000);
+});
+
+ipcMain.on('show-frd-req', () => {
+  var ans;
+  auth.get_frd_req((err, req) => {
+    if (err) {
+      showerr(err);
+      chat_win.reload();
+    }
+    ans = dialog.showMessageBox({
+      type: 'info',
+      title: 'friend request',
+      message: `\n${req.sen} wants to add you as a friend. Do you accept?`,
+      buttons: ['no', 'yes']
+    });
+    if (ans === 0) {
+      auth.send_frd_rej(req.sen, (err) => {
         if (err) {
           showerr(err);
-          addfrd_win.reload();
         } else {
-          showinfo('Public key verified and added successfully');
-          if (addfrd_win !== null) {
-            addfrd_win.hide();
-          }
-          ev.sender.send('add-frd-success');
-          chat_win.reload();
+          showinfo(`A reject response sent to ${req.sen}`);
+          chat_win.focus();
         }
       });
+    } else {    
+      load_verify_frd();
     }
+  });
+});
+
+ipcMain.on('verify-frd-req', (ev, dat) => {
+  if (dat.frd_un && dat.sec) {
+    auth.verify_frd_req(dat.frd_un, dat.sec, (err) => {
+      if (err) {
+        showerr(err);
+      } else {    
+        showinfo(`${dat.frd_un} verified and added successfully`);
+        getfrd_win.hide();
+        chat_win.reload();
+      }
+    });
   }
+});
+
+ipcMain.on('fetch-frd-rej', (ev) => {
+  frd_rej_timer = setInterval(() => {
+  auth.fetch_frd_rej((err, rej) => {
+    if (err) {
+      showerr(err);
+      chat_win.reload();
+    }
+    if (rej) {
+      ev.sender.send('fetch-frd-rej-success');
+    }
+  });
+  }, 5000);
+});
+
+ipcMain.on('show-frd-rej', () => {
+  auth.get_frd_rej((err, rej) => {
+    if (err) {
+      showerr(err);
+      chat_win.reload();
+    }
+    auth.clear_frd_rej_loc((err) => {
+      if (err) {
+        showerr(err);
+        chat_win.reload();
+      } else {
+        showinfo(`${rej} rejected your friend request`);
+      }
+    });
+  });
 });
 
 /**
@@ -306,7 +364,7 @@ ipcMain.on('frd-ls', (ev) => {
         chat_win.reload();
       }
     }
-    if (frds && frds.length > 0) {
+    if (frds) {
       ev.sender.send('frd-ls-success', frds);
     }
   });
@@ -316,9 +374,9 @@ ipcMain.on('frd-ls', (ev) => {
  * send message event
  */
 
-ipcMain.on('send-msg', (ev, arg) => {
-  if (arg.msg && arg.receiver) {
-    auth.send_msg(arg.msg, arg.receiver, (err, res) => {
+ipcMain.on('send-msg', (ev, dat) => {
+  if (dat.msg && dat.receiver) {
+    auth.send_msg(dat.msg, dat.receiver, (err, res) => {
       if (err) {
         showerr(err);
         if (chat_win !== null) {
@@ -328,7 +386,7 @@ ipcMain.on('send-msg', (ev, arg) => {
       if (res.un && res.time) {
         ev.sender.send('send-msg-success', {
           un: res.un,
-          msg: arg.msg,
+          msg: dat.msg,
           time: res.time
         });
       }
@@ -337,31 +395,22 @@ ipcMain.on('send-msg', (ev, arg) => {
 });
 
 /**
- * check for unread messages in local db and
- * return an array of successfully decrypted
- * messages to ipc renderer for showing to
- * the user
+ * fetch unread messages and return an array of successfully 
+ * decrypted messages to ipc renderer for showing to the user
  */
 
-ipcMain.on('check-unread', (ev) => {    
-  auth.get_unread((err, msgs) => {    
-    if (err) {
-      showerr(err);
-      chat_win.reload();
-    }
-    if (msgs) {
-      ev.sender.send('check-unread-success', msgs);
-    }
-  });
-});
-
-ipcMain.on('clear-unread', () => {
-  auth.clear_unread((err) => {
-    if (err) {
-      showerr(err);
-      chat_win.reload();
-    }
-  });
+ipcMain.on('fetch-unread', (ev) => {
+  unread_timer = setInterval(() => {
+    auth.fetch_unread((err, unread) => {
+      if (err) {
+        showerr(err);
+        chat_win.reload();
+      }
+      if (unread) {    
+        ev.sender.send('fetch-unread-success', unread);
+      }
+    });
+  }, 3000);
 });
 
 /**
@@ -369,10 +418,12 @@ ipcMain.on('clear-unread', () => {
  */
 
 ipcMain.on('logout', () => {
+  clearInterval(frd_req_timer);
+  clearInterval(frd_rej_timer);
+  clearInterval(unread_timer);
   auth.logout((err) => {
     if (err) {
       showerr(err);
-      chat_win.reload();
     }
     app.quit();
   });
@@ -383,6 +434,7 @@ ipcMain.on('logout', () => {
  */
 
 process.on('uncaughtException', (err) => {
+  console.log('unex-err:', err);
   console.log(`something unexpected happened: ${err}`);
   showerr(err.message);
 });

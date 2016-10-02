@@ -5,17 +5,6 @@ const ipc = electron.ipcRenderer;
 var user_in = document.getElementById('usern');
 var pass_in = document.getElementById('passw');
 var login_btn = document.getElementById('login-btn');
-var reg_link = document.getElementById('reg-link');
-
-/**
- * load create account window on clicking
- * on 'create account' link
- */
-
-reg_link.addEventListener('click', (event) => {
-  event.preventDefault();
-  ipc.send('load-reg');
-});
 
 /**
  * login button click listener

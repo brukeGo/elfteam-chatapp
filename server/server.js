@@ -14,11 +14,9 @@ const https = require('https');
 const express = require('express');
 const bodyParser = require('body-parser');
 const helmet = require('helmet');
-const socketioJwt = require('socketio-jwt');
 const router = require('./router');
-const auth = require('./auth.js');
 var app = express();
-var server, socket_io, login_io, io;
+var server;
 
 /**
  * tls options
@@ -36,10 +34,6 @@ const options = {
   },
   NPNProtcols: ['http/1.1']
 };
-
-function log(info) {
-  console.log(`elfocrypt-server: ${info}`);
-}
 
 /**
  * normalize a port into a number, string, or false.
@@ -134,84 +128,3 @@ app.use(helmet());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use('/', router);
-
-/**
- * live chat server using socket.io custom namespaces
- * for login and authenticated paths
- */
-
-socket_io = require('socket.io')(server);
-login_io = socket_io.of('/rt/login');
-io = socket_io.of('/rt/auth');
-
-login_io.on('connection', (sock) => {
-  sock.on('login', (dat) => {
-    if (dat.un && dat.pw && dat.pw_sig) {
-      auth.login(dat.un, dat.pw, dat.pw_sig, (err, tok) => {
-        if (err) {
-          sock.emit('login-err', err);
-          sock.disconnect();
-        }
-        if (tok) {
-          log(`${dat.un} logged in successfully`);
-          sock.emit('login-success', {token: tok});
-          sock.disconnect();
-        }
-      }); 
-    } else {    
-      sock.emit('login-err', 'username/pass/sig not valid');
-      sock.disconnect();
-    }
-  });
-});
-
-// authenticated sockets
-io.on('connection', socketioJwt.authorize({
-  secret: auth.jwtkey,
-  callback: false,
-  timeout: 15000
-})).on('authenticated', (sock) => {
-  // this socket is authenticated, we can handle more events
-  log(`${sock.decoded_token.nam} authenticated successfully`);
-  sock.join(sock.decoded_token.nam);
-
-  sock.on('req-chat', (dat) => {
-    sock.join(`${dat.sender}-${dat.receiver}`);
-    dat = Object.assign(dat, {room: `${dat.sender}-${dat.receiver}`});
-    sock.to(dat.receiver).emit('req-priv-chat', dat);
-  }).on('req-priv-chat-reject', (dat) => {
-    io.to(dat.sender).emit('req-chat-reject', dat);
-  }).on('req-priv-chat-accept', (dat) => {
-    sock.join(dat.room);
-    sock.broadcast.to(dat.room).emit('priv-chat-accept', dat);
-  }).on('priv-chat-sender-key', (dat) => {
-    sock.broadcast.to(dat.room).emit('priv-chat-sender-pubkey', dat);
-  }).on('priv-chat-key-exchanged', (dat) => {
-    io.to(dat.room).emit('priv-chat-ready', dat);
-  }).on('priv-msg', (dat) => {
-    sock.broadcast.to(dat.room).emit('priv-msg', dat);
-  }).on('req-group-chat', (dat) => {
-    sock.join(dat.room);
-    dat.receivers.forEach((receiver) => {
-      sock.to(receiver).emit('group-chat', dat);
-    });
-  }).on('group-chat-reject', (dat) => {
-    sock.to(dat.room).emit('group-chat-reject', dat);
-  }).on('group-chat-accept', (dat) => {
-    sock.join(dat.room);
-    sock.broadcast.to(dat.room).emit('group-chat-accept', dat);
-  }).on('g-msg', (dat) => {
-    sock.broadcast.to(dat.room).emit('g-msg', dat);
-  }).on('logout', (dat) => {
-    auth.logout(dat.token, sock.decoded_token.nam, (err) => {
-      if (err) {
-        log(err);
-        sock.emit('logout-err', err);
-        sock.disconnect();
-      } else {
-        sock.emit('logout-success', `logged out successfully`);
-        sock.disconnect();
-      }
-    });
-  });
-});

@@ -333,19 +333,15 @@ function clear_unread(token, username, cb) {
       db.get(username, (err, user) => {
         if (err) {
           return cb(err.message);
-        }
-        if (user.unread && user.unread.length > 0) {
-          user.unread.splice(0, user.unread.length);
-          db.put(username, user, (err) => {
-            if (err) {
-              log(err);
-              return cb(err);
-            }
-            return cb();
-          });
-        } else {
+        }  
+        user.unread.splice(0, user.unread.length);
+        db.put(username, user, (err) => {
+          if (err) {
+            log(err);
+            return cb(err);
+          }
           return cb();
-        }
+        });
       });
     } else {
       return cb('username/token not valid');

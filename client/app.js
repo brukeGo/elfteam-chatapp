@@ -323,15 +323,15 @@ ipcMain.on('verify-frd-req', (ev, dat) => {
 
 ipcMain.on('fetch-frd-rej', (ev) => {
   frd_rej_timer = setInterval(() => {
-  auth.fetch_frd_rej((err, rej) => {
-    if (err) {
-      showerr(err);
-      chat_win.reload();
-    }
-    if (rej) {
-      ev.sender.send('fetch-frd-rej-success');
-    }
-  });
+    auth.fetch_frd_rej((err, rej) => {
+      if (err) {
+        showerr(err);
+        chat_win.reload();
+      }
+      if (rej) {
+        ev.sender.send('fetch-frd-rej-success');
+      }
+    });
   }, 5000);
 });
 
@@ -410,7 +410,7 @@ ipcMain.on('fetch-unread', (ev) => {
         ev.sender.send('fetch-unread-success', unread);
       }
     });
-  }, 3000);
+  }, 5000);
 });
 
 /**

@@ -15,17 +15,17 @@ const tmp = path.join(__dirname, 'tmp');
 const privkey_path = path.join(tmp, 'priv.pem');
 const pubkey_path = path.join(tmp, 'pub.pem');
 const uri = {
-  login: 'https://localhost.daplie.com:3761/login',
-  send_frd_req: 'https://localhost.daplie.com:3761/auth/send_frd_req',
-  get_frd_req: 'https://localhost.daplie.com:3761/auth/get_frd_req',
-  get_frd_rej: 'https://localhost.daplie.com:3761/auth/get_frd_rej',
-  rej_frd_req: 'https://localhost.daplie.com:3761/auth/rej_frd_req',
-  clear_frd_req: 'https://localhost.daplie.com:3761/auth/clear_frd_req',
-  clear_frd_rej: 'https://localhost.daplie.com:3761/auth/clear_frd_rej',
-  msg: 'https://localhost.daplie.com:3761/auth/msg',
-  unread: 'https://localhost.daplie.com:3761/auth/unread',
-  clear_unread: 'https://localhost.daplie.com:3761/auth/clear_unread',
-  logout: 'https://localhost.daplie.com:3761/auth/logout'
+  login: 'https://elfocrypt.me/login',
+  send_frd_req: 'https://elfocrypt.me/auth/send_frd_req',
+  get_frd_req: 'https://elfocrypt.me/auth/get_frd_req',
+  get_frd_rej: 'https://elfocrypt.me/auth/get_frd_rej',
+  rej_frd_req: 'https://elfocrypt.me/auth/rej_frd_req',
+  clear_frd_req: 'https://elfocrypt.me/auth/clear_frd_req',
+  clear_frd_rej: 'https://elfocrypt.me/auth/clear_frd_rej',
+  msg: 'https://elfocrypt.me/auth/msg',
+  unread: 'https://elfocrypt.me/auth/unread',
+  clear_unread: 'https://elfocrypt.me/auth/clear_unread',
+  logout: 'https://elfocrypt.me/auth/logout'
 };
 const encoding = 'base64'; // data encoding
 const alg = 'aes-256-cbc'; // encryption algorithm

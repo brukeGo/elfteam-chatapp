@@ -6,34 +6,14 @@
  * module dependencies.
  */
 
-const fs = require('fs');
 const path = require('path');
-const tls = require('tls');
 const http = require('http');
-const https = require('https');
 const express = require('express');
 const bodyParser = require('body-parser');
 const helmet = require('helmet');
 const router = require('./router');
 var app = express();
 var server;
-
-/**
- * tls options
- */
-
-const options = {
-  key: fs.readFileSync(path.join(__dirname, 'certs', 'privkey.pem')),
-  cert: fs.readFileSync(path.join(__dirname, 'certs', 'fullchain.pem')),
-  dhparam: fs.readFileSync(path.join(__dirname, 'certs', 'dh.pem')),
-  SNICallback: function(domainname, cb) {
-
-    // normally check the domainname choose the correct certificate,
-    // but for testing/dev always use this one (the default) instead
-    cb(null, tls.createSecureContext(options));
-  },
-  NPNProtcols: ['http/1.1']
-};
 
 /**
  * normalize a port into a number, string, or false.
@@ -56,7 +36,7 @@ function normalizePort(val) {
   return false;
 }
 
-var port = normalizePort(process.env.PORT || 3761);
+var port = normalizePort(process.env.PORT || 8080);
 
 /**
  * error event listener (it is an express default, keep it)
@@ -91,20 +71,10 @@ function onError(error) {
 app.set('port', port);
 
 /**
- * redirect http requests to https
+ * create HTTP server.
  */
 
-http.createServer((req, res) => {
-  res.writeHead(301, {"Location": "https://" + req.headers.host + req.url});
-  res.end();
-}).listen(3571);
-
-/**
- * create HTTPS server.
- */
-
-server = https.createServer(options, app);
-//var server = http.createServer(app);
+server = http.createServer(app);
 
 /**
  * listen on provided port, on all network interfaces.
@@ -122,8 +92,6 @@ server.on('error', onError);
 
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
-// use helmet which consists of 9 different security
-// middlewares for setting http headers appropriately
 app.use(helmet());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));

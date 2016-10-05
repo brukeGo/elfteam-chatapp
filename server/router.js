@@ -164,7 +164,7 @@ router.post('/auth/rej_frd_req', (req, res, next) => {
   var un = req.body.sen;
   var frd = req.body.frd;
   if (tok && un && frd) {
-    auth.rej_frd_req(tok, un, frd, (err, reqs) => {
+    auth.rej_frd_req(tok, un, frd, (err) => {
       if (err) {
         res.json({err: err});
       } else {

@@ -276,7 +276,7 @@ ipcMain.on('fetch-frd-req', (ev) => {
         ev.sender.send('fetch-frd-req-success');
       }
     });
-  }, 5000);
+  }, 7000);
 });
 
 ipcMain.on('show-frd-req', () => {
@@ -332,7 +332,7 @@ ipcMain.on('fetch-frd-rej', (ev) => {
         ev.sender.send('fetch-frd-rej-success');
       }
     });
-  }, 5000);
+  }, 7000);
 });
 
 ipcMain.on('show-frd-rej', () => {
@@ -410,7 +410,7 @@ ipcMain.on('fetch-unread', (ev) => {
         ev.sender.send('fetch-unread-success', unread);
       }
     });
-  }, 5000);
+  }, 7000);
 });
 
 /**
@@ -435,6 +435,5 @@ ipcMain.on('logout', () => {
 
 process.on('uncaughtException', (err) => {
   console.log('unex-err:', err);
-  console.log(`something unexpected happened: ${err}`);
   showerr(err.message);
 });

@@ -1,7 +1,7 @@
 {
   "name": "elfocrypt-client",
   "version": "0.0.1",
-  "description": "private end-to-end encrypted chat messenger",
+  "description": "end-to-end encrypted chat messenger",
   "main": "app.js",
   "scripts": {
     "start": "./node_modules/.bin/electron ."

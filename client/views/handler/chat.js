@@ -107,11 +107,11 @@ ipc.on('send-msg-success', (ev, dat) => {
 
 ipc.send('fetch-unread');
 ipc.on('fetch-unread-success', (ev, msgs) => {
-    msgs.forEach((unread) => {
-      if (unread.sen && unread.msg && unread.time) {
-        create_li_msg(unread.sen, unread.msg, unread.time, false);
-      }
-    });
+  msgs.forEach((unread) => {
+    if (unread.sen && unread.msg && unread.time) {
+      create_li_msg(unread.sen, unread.msg, unread.time, false);
+    }
+  });
 });
 
 ipc.send('fetch-frd-req');
@@ -148,4 +148,3 @@ logout_btn.addEventListener('click', (ev) => {
   ev.preventDefault();
   ipc.send('logout');
 });
-

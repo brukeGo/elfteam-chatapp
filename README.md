@@ -4,4 +4,4 @@
 
 *Please refer to wiki for [docs](https://github.com/mawni/elfocrypt/wiki)*.
 
-*`elfteam-chatapp` server: https://elfocrypt.me*
+`elfteam-chatapp` server: https://elfocrypt.me

@@ -8,10 +8,10 @@ const async = require('async');
 const encod = 'base64';
 //const jwtkey = process.env.JWT_KEY;
 //const hmac_key = process.env.HMAC_KEY;
+//const pw_key = process.env.PW_KEY;
 //const client_tag = process.env.CLIENT_TAG;
 
 // these keys are used for testing and development
-const prox_key = require('./package.json').prox_key;
 const jwtkey = require('./package.json').jwt_key;
 const hmac_key = require('./package.json').hmac_key;
 const pw_key = require('./package.json').pw_key;
@@ -277,8 +277,6 @@ function logout(usern, cb) {
 }
 
 module.exports = {
-  create_prox_tok: create_prox_tok,
-  verify_prox_tok: verify_prox_tok,
   verify_client_tag: verify_client_tag,
   verify_tok: verify_tok,
   register: register,

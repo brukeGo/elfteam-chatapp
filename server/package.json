@@ -14,18 +14,15 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mawni/elfocrypt.git"
+    "url": "git+https://github.com/mawni/elfteam-chatapp.git"
   },
   "bugs": {
-    "url": "https://github.com/mawni/elfocrypt/issues"
+    "url": "https://github.com/mawni/elfteam-chatapp/issues"
   },
-  "homepage": "https://github.com/mawni/elfocrypt#readme",
-  "engines": {
-    "node": ">6.0.0"
-  },
+  "homepage": "https://github.com/mawni/elfteam-chatapp#readme",
   "dependencies": {
+    "async": "^2.1.2",
     "body-parser": "^1.15.2",
-    "ejs": "^2.5.2",
     "express": "^4.14.0",
     "helmet": "^2.2.0",
     "jsonwebtoken": "^7.1.9",

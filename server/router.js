@@ -4,14 +4,38 @@ const express = require('express');
 const router = express.Router();
 const auth = require('./auth.js');
 
+router.post('/init_reg', (req, res, next) => {
+  auth.init_register(req.body.tok, (er) => {  
+    if (er) {
+      res.json({err: er});
+    } else {
+      res.json({init: 'ok'});
+    }
+  });
+});
+
 router.post('/reg', (req, res, next) => {
-  auth.register(req.body.un, req.body.pw, (er) => {
-    res.json({err: er});
+  auth.register(req.body.tok, (er) => {
+    if (er) {
+      res.json({err: er});
+    } else {
+      res.json({reg: 'ok'});
+    }
+  });
+});
+
+router.post('/init_login', (req, res, next) => {
+  auth.init_login(req.body.tok, (er, challenge) => {
+    if (er) {
+      res.json({err: er});
+    } else {
+      res.json({challenge: challenge});
+    }
   });
 });
 
 router.post('/login', (req, res, next) => {
-  auth.login(req.body.un, req.body.pw, (er, tok) => {
+  auth.login(req.body.tok, (er, tok) => {
     if (er) {
       res.json({err: er});
     } else {

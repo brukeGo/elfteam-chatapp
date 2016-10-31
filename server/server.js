@@ -53,7 +53,7 @@ app.use(helmet());
 app.use(bodyParser.json({limit: '50mb'}));
 app.use(bodyParser.urlencoded({limit: '50mb', extended: false}));
 app.use((req, res, next) => {
-  if (req.originalUrl === '/reg' || req.originalUrl === '/login') {
+  if (req.originalUrl === '/init_reg' || req.originalUrl === '/reg' || req.originalUrl === '/init_login' || req.originalUrl === '/login') {
     auth.verify_client_tag(req.headers.authorization, (er) => {
       if (er) {
         res.status(403).json({err: er});
@@ -71,4 +71,5 @@ app.use((req, res, next) => {
       }
     });
   }
-}).use('/', router);
+});
+app.use('/', router);

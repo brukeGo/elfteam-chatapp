@@ -9,8 +9,6 @@ var msg = document.getElementById('msg-inp');
 var send_btn = document.getElementById('send-btn');
 var msg_ul = document.getElementById('msg-list');
 var logout_btn = document.getElementById('logout-btn');
-var choose_btn = document.getElementById('choose-btn');
-var prog = document.getElementById('prog');
 var scrol = document.getElementById('chat-scrol');
 
 function append_frd_list(frds) { 
@@ -67,24 +65,6 @@ function create_li_msg(dat, own) {
   msg_p.appendChild(document.createTextNode(dat.msg));
   msg_div.appendChild(msg_p);
 
-  if (dat.files && dat.files !== 0) {  
-    dat.files.forEach((f) => {
-      var file_icon = document.createElement('span');
-      var file_link = document.createElement('a');
-      file_link.id = f;
-      file_link.className += 'file-link';
-      file_icon.className += 'glyphicon glyphicon-paperclip';
-      file_link.appendChild(file_icon);
-      file_link.appendChild(document.createTextNode(` ${f} `));
-      if (!own) {
-        file_link.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ipc.send('save-file', f);
-        });
-      }
-      msg_div.appendChild(file_link);
-    });
-  }
   time_p.appendChild(time_icon);
   time_p.appendChild(document.createTextNode(` ${dat.time} `));
   time_p.appendChild(document.createTextNode(` \u2714`));
@@ -93,20 +73,6 @@ function create_li_msg(dat, own) {
   li.appendChild(body_div);
   msg_ul.appendChild(li);
   scrol.scrollTop = scrol.scrollHeight;
-  return;
-}
-
-function create_li_path(file) {
-  var li = document.createElement('li');
-  var f_span = document.createElement('span');
-  li.id = file;
-  li.className = 'list-group-item';
-  f_span.style['font-style'] = 'italic';
-  f_span.appendChild(document.createTextNode(file));
-  li.appendChild(f_span);
-  msg_ul.style['margin-top'] = '10px';
-  msg_ul.style['margin-bottom'] = '10px';
-  msg_ul.appendChild(li);
   return;
 }
 
@@ -134,10 +100,6 @@ send_btn.addEventListener('click', (ev) => {
   }
 });
 
-ipc.on('show-prog', () => {
-  prog.style.display = 'block';
-});
-
 ipc.on('send-msg-success', (ev, dat) => {
   if (prog) {
     prog.style.display = 'none';
@@ -152,24 +114,6 @@ ipc.on('fetch-unread-success', (ev, msgs) => {
   msgs.forEach((unread) => {
     create_li_msg(unread, false);
   });
-});
-
-choose_btn.addEventListener('click', (ev) => { 
-  ev.preventDefault();
-  ipc.send('open-choose');
-});
-
-ipc.on('open-choose-success', (ev, paths) => {
-  paths.forEach((f) => {
-    create_li_path(f);
-  });
-});
-
-ipc.on('save-file-success', (ev, fname) => {
-  var file_li = document.getElementById(fname);
-  if (file_li !== undefined) {
-    file_li.parentNode.removeChild(file_li);
-  }
 });
 
 logout_btn.addEventListener('click', (ev) => {

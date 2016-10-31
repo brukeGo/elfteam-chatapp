@@ -80,7 +80,7 @@ function verify_dat_tok(usern, tok, cb) {
       });
     },
     function(user, callback) {
-      jwt.verify(tok, Buffer.from(user.appkey, encod), {algorithms: ['RS256']}, (er, decod) => {
+      jwt.verify(tok, Buffer.from(user.pub, encod), {algorithms: ['RS256']}, (er, decod) => {
         if (er) return callback(er);
         if (decod.iss === usern && decod.sub === 'elfocrypt-server') {
           return callback(null, decod);
@@ -236,7 +236,7 @@ function send_frd_req(sender, tok, cb) {
     function(decod, callback) {
       db.get(decod.rec, (er, user) => {
         if (er) return callback(er);
-        user.frd_req = {sen: decod.iss, tok: decod.tok};
+        user.frd_req = {sen: sender, tok: decod.tok};
         db.put(decod.rec, user, (er) => {
           if (er) return callback(er);
           return callback();

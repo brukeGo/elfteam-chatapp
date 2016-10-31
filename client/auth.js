@@ -101,21 +101,21 @@ function create_dat_tok(dat, cb) {
       });
     },
     function(usern, callback) {
+      db.get('privkey', (er, privkey) => {
+        if (er) return callback(er);
+        return callback(null, usern, privkey);
+      });
+    },
+    function(usern, privkey, callback) {
       dat = assign(dat, {
         iat: new Date().getTime(),
         exp: Math.floor(new Date().getTime()/1000)+30,
         iss: usern.toString(),
         sub: 'elfocrypt-server'
       });
-      return callback(null, dat);
-    },
-    function(dat, callback) {
-      db.get('appkey', (er, appkey) => {
+      jwt.sign(dat, privkey, {algorithm: 'RS256'}, (er, tok) => {
         if (er) return callback(er);
-        jwt.sign(dat, appkey, {algorithm: 'RS256'}, (er, tok) => {
-          if (er) return callback(er);
-          return callback(null, tok);
-        });
+        return callback(null, tok);
       });
     }
   ], (er, tok) => {

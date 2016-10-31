@@ -1,5 +1,5 @@
 'use strict';
-
+const path = require('path');
 const express = require('express');
 const router = express.Router();
 const auth = require('./auth.js');
@@ -45,13 +45,13 @@ router.post('/login', (req, res, next) => {
 });
 
 router.post('/send_frd_req', (req, res, next) => {
-  auth.send_frd_req(req.decod.nam, req.body.rec, req.body.tok, (er) => {
+  auth.send_frd_req(req.decod.sub, req.body.tok, (er) => { 
     res.json({err: er});
   });
 });
 
 router.post('/fetch_frd_req', (req, res, next) => {
-  auth.fetch_frd_req(req.decod.nam, (er, req) => {
+  auth.fetch_frd_req(req.decod.sub, (er, req) => {
     if (er) {
       res.json({err: er});
     } else {
@@ -61,7 +61,7 @@ router.post('/fetch_frd_req', (req, res, next) => {
 });
 
 router.post('/fetch_frd_rej', (req, res, next) => {
-  auth.fetch_frd_rej(req.decod.nam, (er, rej) => {
+  auth.fetch_frd_rej(req.decod.sub, (er, rej) => {
     if (er) {
       res.json({err: er});
     } else {
@@ -71,19 +71,19 @@ router.post('/fetch_frd_rej', (req, res, next) => {
 });
 
 router.post('/send_frd_rej', (req, res, next) => {
-  auth.send_frd_rej(req.decod.nam, req.body.frd, (er) => {
+  auth.send_frd_rej(req.decod.sub, req.body.tok, (er) => {
     res.json({err: er});
   });
 });
 
 router.post('/msg', (req, res, next) => {
-  auth.handle_msg(req.decod.nam, req.body.rec, req.body.tok, req.body.time, (er) => {
+  auth.handle_msg(req.decod.sub, req.body.tok, (er) => {
     res.json({err: er});
   });
 });
 
 router.post('/unread', (req, res, next) => {
-  auth.fetch_unread(req.decod.nam, (er, unread) => {
+  auth.fetch_unread(req.decod.sub, (er, unread) => {
     if (er) {
       res.json({err: er});
     } else {
@@ -93,8 +93,8 @@ router.post('/unread', (req, res, next) => {
 });
 
 router.post('/logout', (req, res, next) => {
-  auth.logout(req.decod.nam, (er) => {
-    res.json({err: er});
+  auth.logout(req.decod, () => {
+    res.json({err: null});
   });
 });
 

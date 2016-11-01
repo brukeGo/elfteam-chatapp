@@ -359,6 +359,7 @@ function create_frd_tok(frd_name, sec, cb) {
         return callback(null, usern, pubkey);
       });
     },
+    //Function to create a hash of secret
     function(usern, pubkey, callback) {
       jwt.sign({
         iat: new Date().getTime(),

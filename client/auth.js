@@ -11,756 +11,796 @@ const rm = require('rimraf');
 const mkdirp = require('mkdirp');
 const assign = require('deep-assign');
 const jwt = require('jsonwebtoken');
+const cache = path.join(__dirname, 'cache');
 const tmp = path.join(__dirname, 'tmp');
 const privkey_path = path.join(tmp, 'priv.pem');
 const pubkey_path = path.join(tmp, 'pub.pem');
 const uri = {
+  init_reg: 'https://elfocrypt.me/init_reg',
+  reg: 'https://elfocrypt.me/reg',
+  init_login: 'https://elfocrypt.me/init_login',
   login: 'https://elfocrypt.me/login',
-  send_frd_req: 'https://elfocrypt.me/auth/send_frd_req',
-  get_frd_req: 'https://elfocrypt.me/auth/get_frd_req',
-  get_frd_rej: 'https://elfocrypt.me/auth/get_frd_rej',
-  rej_frd_req: 'https://elfocrypt.me/auth/rej_frd_req',
-  clear_frd_req: 'https://elfocrypt.me/auth/clear_frd_req',
-  clear_frd_rej: 'https://elfocrypt.me/auth/clear_frd_rej',
-  msg: 'https://elfocrypt.me/auth/msg',
-  unread: 'https://elfocrypt.me/auth/unread',
-  clear_unread: 'https://elfocrypt.me/auth/clear_unread',
-  logout: 'https://elfocrypt.me/auth/logout'
+  send_frd_req: 'https://elfocrypt.me/send_frd_req',
+  send_frd_rej: 'https://elfocrypt.me/send_frd_rej',
+  fetch_frd_req: 'https://elfocrypt.me/fetch_frd_req',
+  fetch_frd_rej: 'https://elfocrypt.me/fetch_frd_rej',
+  msg: 'https://elfocrypt.me/msg',
+  unread: 'https://elfocrypt.me/unread',
+  logout: 'https://elfocrypt.me/logout'
 };
-const encoding = 'base64'; // data encoding
-const alg = 'aes-256-cbc'; // encryption algorithm
-const hmac_alg = 'sha256'; // hmac algorithm
+const encod = 'base64';
+const alg = 'aes-256-cbc';
+const hmac_alg = 'sha256';
+const client_key = require(path.join(__dirname, 'package.json')).clientkey;
+const reg_key = require(path.join(__dirname, 'package.json')).regkey;
+var db = levelup(path.join(__dirname, '.db'), {valueEncoding: 'binary'});
 
-// client's local storage
-var db = levelup(path.join(__dirname, 'db'));
-
-/**
- * generate fresh RSA key by executing openssl commands
- */
-
-function gen_privkey() {
+function gen_rsakey() {
   try {
     exec(`openssl genrsa -out ${privkey_path} 2048`, {stdio: [0, 'pipe']});
-  } catch(err) {
-    throw err.message;
+  } catch(er) {
+    throw er;
   }
   return;
 }
 
-/**
- * calculate client's public key from RSA key
- */
-
-function gen_pubkey() {
+function compute_pubkey() {
   try {
     exec(`openssl rsa -in ${privkey_path} -out ${pubkey_path} -outform PEM -pubout`, {stdio: [0, 'pipe']});
-  } catch(err) {
-    throw err.message;
+  } catch(er) {
+    throw er;
   }
   return;
 }
-
-/**
- * get private key read in from a pem encoded file
- */
 
 function get_privkey() {
   try {
-    return fs.readFileSync(privkey_path, 'utf8').trim();
-  } catch(err) {
-    throw err.message;
+    return fs.readFileSync(privkey_path);
+  } catch(er) {
+    throw er;
   }
 }
-
-/**
- * get public key read in from a pem encoded file
- */
 
 function get_pubkey() {
   try {
-    return fs.readFileSync(pubkey_path, 'utf8').trim();
-  } catch(err) {
-    throw err.message;
+    return fs.readFileSync(pubkey_path);
+  } catch(er) {
+    throw er;
   }
 }
 
-/**
- * return locally saved token for sending to the server
- */
-
-function get_user_tok(cb) {
-  db.get('name', (err, username) => {
-    if (err) {
-      return cb(err.message);
-    } else {
-      db.get('tok', (err, token) => {
-        if (err) {
-          return cb(err.message);
-        } else {
-          return cb(null, {un: username, tok: token});
-        }
+function create_reg_tok(dat, cb) {
+  async.waterfall([
+    function(callback) {
+      dat = assign(dat, {
+        iat: new Date().getTime(),
+        exp: Math.floor(new Date().getTime()/1000)+30,
+        iss: 'elfocrypt.me',
+        sub: 'elfocrypt-server'
+      });
+      return callback(null, dat);
+    },
+    function(dat, callback) {  
+      jwt.sign(dat, Buffer.from(reg_key, encod), {algorithm: 'RS256'}, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
       });
     }
+  ], (er, tok) => {
+    if (er) return cb(er);
+    return cb(null, tok);
   });
 }
 
-/**
- * make a post request with a given options obj and return server response
- */
-
-function req(opts, cb) {
-  var server_res;
-  get_user_tok((err, res) => {
-    if (err) {
-      return cb(err.message);
+function create_dat_tok(dat, cb) {
+  async.waterfall([
+    function(callback) {
+      db.get('name', (er, usern) => {
+        if (er) return callback(er);
+        return callback(null, usern);
+      });
+    },
+    function(usern, callback) {
+      db.get('privkey', (er, privkey) => {
+        if (er) return callback(er);
+        return callback(null, usern, privkey);
+      });
+    },
+    function(usern, privkey, callback) {
+      dat = assign(dat, {
+        iat: new Date().getTime(),
+        exp: Math.floor(new Date().getTime()/1000)+30,
+        iss: usern.toString(),
+        sub: 'elfocrypt-server'
+      });
+      jwt.sign(dat, privkey, {algorithm: 'RS256'}, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
+      });
     }
-    opts = assign(opts, {headers: {authorization: res.tok}, rejectUnauthorized: true, form: {sen: res.un}});
-    request.post(opts, (error, res, body) => {
-      if (error) {
-        console.log(`request-err: ${error}`);
-        return cb(error.message);
-      }
-      try {
-        server_res = JSON.parse(body);
-      } catch(err) {
-        return cb(err.message);
-      }
-      if (server_res.err) {
-        return cb(server_res.err);
-      } else {
-        return cb(null, server_res);
-      }
-    });
+  ], (er, tok) => {
+    if (er) return cb(er);
+    return cb(null, tok);
   });
 }
 
-/**
- * make a post request to /register endpoint.
- * after successfully registered, save user data
- * to local db
- */
-
-function login(username, passw, cb) {
+function request_reg(url, tok, cb) {
   var server_res;
-  request.post({url: uri.login, form: {un: username, pw: passw}}, (err, res, body) => {
-    if (err) {
-      return cb(err.message);
-    }
+  request.post({url: url, headers: {authorization: client_key}, rejectUnauthorized: true, form: {tok: tok}}, (er, res, body) => {
+    if (er) return cb(er);
     try {
       server_res = JSON.parse(body);
-    } catch(err) {
-      return cb(err.message);
+    } catch(er) {
+      return cb(er);
     }
-    if (server_res.err) {
-      return cb(server_res.err);
-    }
-    if (server_res.token) {
-      db.put('tok', server_res.token, (err) => {
-        if (err) {
-          return cb(err.message);
-        } else {
-          // check if user already created RSA key
-          db.get('pub', (err) => {
-            if (err) {
-              // it is the first time user logs in
-              // generate user's keys and save it
-              // user's local db
-
-              try {
-                rm.sync(tmp);
-                mkdirp.sync(tmp);
-                gen_privkey();
-                gen_pubkey();
-                db.batch()
-                  .put('name', username)
-                  .put('priv', get_privkey())
-                  .put('pub', get_pubkey())
-                  .put('frds', JSON.stringify({ls: []}))
-                  .write(() => {
-                    console.log(`${username} saved to db successfully`);
-                    rm.sync(tmp);
-                    return cb();
-                  });
-              } catch(er) {
-                return cb(er.message);  
-              }
-            } else {
-              return cb();
-            }
-          });
-        }
-      });
-    } else {
-      return cb('no authorization token');
-    }
+    if (server_res.err) return cb(server_res.err);
+    return cb(null, server_res);
   });
 }
 
-/**
- * add friend's data to local db
- */
-
-function add_frd(frd_username, pubkey, sec, cb) {
-  var frds;
-  db.get('frds', (err, val) => {
-    if (err) {
-      return cb(err.message);
-    }
-    try {
-      frds = JSON.parse(val);
-    } catch(er) {
-      return cb(er.message);
-    }
-    frds.ls.push({name: frd_username, pubkey: pubkey, sec: sec});
-    db.put('frds', JSON.stringify(frds), (err) => {
-      if (err) {
-        return cb(err.message);
-      } else {
-        return cb();
+function register(usern, cb) {
+  async.waterfall([
+    function(callback) {
+      create_reg_tok({un: usern}, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
+      });
+    },
+    function(tok, callback) {
+      request_reg(uri.init_reg, tok, (er, res) => {
+        if (er) return callback(er);
+        if (res.init && res.init === 'ok') {
+          return callback();
+        } else {
+          return callback(new Error('no proper response received from the server'));
+        }
+      });
+    },
+    function(callback) {
+      try {
+        rm.sync(tmp);
+        rm.sync(cache);
+        mkdirp.sync(tmp);
+        mkdirp.sync(cache);
+        gen_rsakey();
+        compute_pubkey();
+        return callback();
+      } catch(er) {
+        return callback(er);
       }
+    },
+    function(callback) {
+      db.put('privkey', get_privkey(), (er) => {
+        if (er) return callback(er);
+        return callback();
+      });
+    },
+    function(callback) {
+      create_reg_tok({
+        un: usern,
+        pub: get_pubkey().toString(encod)
+      }, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
+      });
+    },
+    function(tok, callback) {
+      request_reg(uri.reg, tok, (er, res) => {
+        if (er) return callback(er);
+        if (res.reg && res.reg === 'ok') {
+          return callback();
+        } else {
+          return callback(new Error('no proper response received from the server'));
+        }
+      });
+    },
+    function(callback) {
+      try {
+        rm.sync(tmp);
+        mkdirp.sync(tmp);
+        gen_rsakey();
+        compute_pubkey();
+        return callback();
+      } catch(er) {
+        return callback(er);
+      } 
+    },
+    function(callback) {
+      var frds = [];
+      db.batch()
+        .put('name', Buffer.from(usern))
+        .put('priv', get_privkey())
+        .put('pub', get_pubkey())
+        .put('frds', Buffer.from(JSON.stringify(frds)))
+        .write((er) => {
+          if (er) return callback(er);
+          rm.sync(tmp);
+          console.log(`${usern} saved to local db successfully`);
+          return callback();
+        });
+    }
+  ], (er) => {
+    if (er) return cb(er);
+    return cb();
+  });
+}
+
+function login(usern, cb) {
+  async.waterfall([
+    function(callback) {
+      create_reg_tok({un: usern}, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
+      });
+    },
+    function(tok, callback) {
+      request_reg(uri.init_login, tok, (er, res) => {
+        if (er) return callback(er);
+        if (res.challenge) {
+          return callback(null, res.challenge);
+        } else {
+          return callback(new Error('no proper response received from the server'));
+        }
+      });
+    },
+    function(challenge, callback) {
+      var enc_challenge;
+      db.get('privkey', (er, privkey) => {
+        if (er) return callback(er);
+        try {
+          enc_challenge = crypto.privateEncrypt(privkey.toString(), Buffer.from(challenge, encod));
+          return callback(null, enc_challenge.toString(encod));
+        } catch(er) {
+          return callback(er);
+        }
+      });
+    },
+    function(enc_challenge, callback) {
+      create_reg_tok({un: usern, cha: enc_challenge}, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
+      });
+    },
+    function(tok, callback) {
+      request_reg(uri.login, tok, (er, res) => {
+        if (er) return callback(er);
+        if (res.token) {
+          return callback(null, res.token);
+        } else {
+          return callback(new Error('no proper response received from the server'));
+        }
+      });
+    },
+    function(token, callback) {
+      db.put('tok', Buffer.from(token), (er) => {
+        if (er) return callback(er);
+        return callback();
+      });
+    }
+  ], (er) => {
+    if (er) return cb(er);
+    return cb();
+  });
+}
+
+function req(opts, cb) {
+  async.waterfall([
+    function(callback) {
+      db.get('tok', (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
+      });
+    },
+    function(tok, callback) {
+      var server_res;
+      opts = assign(opts, {headers: {authorization: Buffer.from(tok).toString().trim()}, rejectUnauthorized: true});
+      request.post(opts, (er, res, body) => {
+        if (er) return callback(er);
+        try {
+          server_res = JSON.parse(body);
+        } catch(er) {
+          return callback(er);
+        }
+        if (server_res.err) return callback(server_res.err);
+        return callback(null, server_res);
+      });
+    }
+  ], (er, server_res) => {
+    if (er) return cb(er);
+    return cb(null, server_res);
+  });
+}
+
+function add_frd(frd_username, frd_key, cb) {
+  var frds;
+  db.get('frds', (er, buf) => {
+    if (er) return cb(er);
+    try {
+      frds = JSON.parse(buf);
+    } catch(er) {
+      return cb(er);
+    }
+    frds.push({name: frd_username, key: frd_key});
+    db.put('frds', Buffer.from(JSON.stringify(frds)), (er) => {
+      if (er) return cb(er);
+      return cb();
     });
   });
 }
-
-/**
- * get the user's friend list
- */
 
 function get_frds(cb) {
   var frds;
-  db.get('frds', (err, val) => {
-    if (err) {
-      return cb(err.message);
-    }
+  db.get('frds', (er, buf) => {
+    if (er) return cb(er);
     try {
-      frds = JSON.parse(val);
-    } catch(err) {
-      return cb(err.message);
+      frds = JSON.parse(buf);
+    } catch(er) {
+      return cb(er);
     }
-    if (frds.ls.length > 0) {
-      return cb(null, frds.ls);
+    if (frds.length > 0) {
+      return cb(null, frds);
     } else {
       return cb();
-    }  
+    }
   });
 }
-/**
- * put user public key in a token and sign it
- * with user/friend shared secret
- */
 
-function gen_frd_tok(frd_name, sec, cb) {
-  var tok;
-  db.get('name', (err, usern) => {
-    if (err) {
-      return cb(err.message);
-    }
-    db.get('pub', (err, pubkey) => {
-      if (err) {
-        return cb(err.message);
-      }
-      // sign jwt symmetric with user/friend shared secret
-      tok = jwt.sign({
+function create_frd_tok(frd_name, sec, cb) {
+  async.waterfall([
+    function(callback) {
+      db.get('name', (er, usern) => {
+        if (er) return callback(er);
+        return callback(null, usern);
+      });
+    },
+    function(usern, callback) {
+      db.get('pub', (er, pubkey) => {
+        if (er) return callback(er);
+        return callback(null, usern, pubkey);
+      });
+    },
+    function(usern, pubkey, callback) {
+      jwt.sign({
         iat: new Date().getTime(),
         exp: Math.floor(new Date().getTime()/1000) + 60*60,
-        iss: usern,
+        iss: usern.toString(),
         sub: frd_name,
-        pub: Buffer.from(pubkey).toString(encoding)
-      }, sec, {algorithm: 'HS256'});
-      return cb(null, tok);
-    });   
-  });
-}
-
-function get_frd_sec(frd_username, cb) {
-  var sec;
-  get_frds((err, frds) => {
-    if (err) {
-      return cb(err);
-    }
-    if (frds) {
-      frds.forEach((frd) => {
-        if (frd.sec && frd.name === frd_username) {
-          sec = frd.sec;
-        }
-      });
-      return cb(null, sec);
-    } else {
-      return cb();
-    }
-  });
-}
-
-/**
- * generate a message token and sign it with user/friend shared secret
- */
-
-function gen_msg_tok(enc_dat, receiver, cb) {
-  var tok;
-  db.get('name', (err, usern) => {
-    if (err) {
-      return cb(err.message);
-    }
-    get_frd_sec(receiver, (err, sec) => {
-      if (err) {
-        return cb(err);
-      }
-      // sign jwt symmetric with user/friend shared secret
-      tok = jwt.sign({
-        iat: new Date().getTime(),
-        exp: Math.floor(new Date().getTime()/1000) + 60*60,
-        iss: usern,
-        sub: receiver,
-        msg: enc_dat
-      }, sec, {algorithm: 'HS256'});
-      return cb(null, tok);
-    });
-  });
-}
-
-/**
- * verify a message token
- */
-
-function verify_msg_tok(frd, tok, cb) {
-  get_frd_sec(frd, (err, sec) => {
-    if (err) {
-      return cb(err);
-    }
-    jwt.verify(tok, sec, {algorithms: 'HS256'}, (err, decod) => {
-      if (err) {
-        return cb(err.message);
-      }
-      db.get('name', (err, usern) => {
-        if (err) {
-          return cb(err.message);
-        }
-        if (decod.iss === frd && decod.sub === usern && decod.msg) {
-          return cb(null, decod);
-        } else {
-          return cb('invalid message token');
-        }
-      });
-    });
-  });
-}
-
-/**
- * verify friend token
- */
-
-function verify_frd_tok(frd_name, tok, sec, cb) {
-  // verify jwt symmetric with user/friend shared secret
-  jwt.verify(tok, sec, {algorithms: 'HS256'}, (err, decod) => {
-    if (err) {
-      return cb(err.message);
-    }
-    db.get('name', (err, usern) => {
-      if (err) {
-        return cb(err.message);
-      }
-      if (decod.iss === frd_name && decod.sub === usern && decod.pub) {
-        return cb(null, decod);
-      } else {
-        return cb('invalid token');
-      }
-    });
-  });
-}
-
-function clear_frd_req(cb) {      
-  req({url: uri.clear_frd_req}, (err) => {
-    if (err) {
-      return cb(err);
-    } else {
-      return cb();
-    }
-  });
-}
-
-function verify_frd_req(frd, sec, cb) {
-  var req;
-  db.get('frd_req', (err, val) => {
-    if (err) {
-      return cb(err.message);
-    }
-    try {
-      req = JSON.parse(val);
-    } catch(err) {
-      return cb(err.message);
-    }
-    if (!req.sen || !req.tok) {
-      return cb('invalid friend request');
-    } else {
-      if (req.sen === frd) {
-        verify_frd_tok(req.sen, req.tok, sec, (err, decod) => {
-          if (err) {
-            return cb(err);
-          } else {
-            add_frd(frd, Buffer.from(decod.pub, encoding).toString(), sec, (err) => {
-              if (err) {
-                return cb(err);
-              } else {
-                db.del('frd_req', (err) => {
-                  if (err) {
-                    return cb(err.message);
-                  }
-                  return cb();
-                });
-              }
-            });
-          }
-        });
-      } else {
-        return cb('invalid token');
-      }
-    }
-  });
-}
-
-/**
- * send a friend request
- */
-
-function send_frd_req(frd_un, sec, cb) {
-  gen_frd_tok(frd_un, sec, (err, tok) => {
-    if (err) {
-      return cb(err);
-    } else {
-      req({url: uri.send_frd_req, form: {rec: frd_un, tok: tok}}, (err) => {
-        if (err) {
-          return cb(err);
-        }
-        return cb();
+        pub: pubkey.toString(encod)
+      }, sec, {algorithm: 'HS256'}, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
       });
     }
+  ], (er, tok) => {
+    if (er) return cb(er);
+    return cb(null, tok);
   });
 }
-
-function send_frd_rej(frd, cb) {
-  req({url: uri.rej_frd_req, form: {frd: frd}}, (err) => {
-    if (err) {
-      return cb(err);
-    }
-    return cb();
-  });
-}
-
-/**
- * fetch friend requests
- */
-
-function fetch_frd_req(cb) {
-  req({url: uri.get_frd_req}, (err, res) => {
-    if (err) {
-      return cb(err);
-    }
-    if (res && res.frd_req.tok) {
-      db.put('frd_req', JSON.stringify(res.frd_req), (err) => {
-        if (err) {
-          return cb(err.message);
-        } else {
-          clear_frd_req((err) => {
-            if (err) {
-              return cb(err);
-            }
-            return cb(null, true);
-          });
-        }
-      });
-    } else {
-      return cb();
-    }
-  });
-}
-
-function get_frd_req(cb) {
-  var req;
-  db.get('frd_req', (err, val) => {
-    if (err) {
-      return cb(err.message);
-    }
-    try {
-      req = JSON.parse(val);
-    } catch(err) {
-      return cb(err.message);
-    }
-    return cb(null, req);
-  });
-}
-
-function clear_frd_rej(cb) {
-  req({url: uri.clear_frd_rej}, (err) => {
-    if (err) {
-      return cb(err);
-    } else {
-      return cb();
-    }
-  });
-}
-
-function fetch_frd_rej(cb) {
-  req({url: uri.get_frd_rej}, (err, res) => {
-    if (err) {
-      return cb(err);
-    }
-    if (res.frd_rej) {
-      db.put('frd_rej', res.frd_rej, (err) => {
-        if (err) {
-          return cb(err.message);
-        }
-        clear_frd_rej((err) => {
-          if (err) {
-            return cb(err);
-          }
-          return cb(null, true);
-        });
-      });
-    } else {
-      return cb();
-    }
-  });
-}
-
-function clear_frd_rej_loc(cb) {
-  db.del('frd_rej', (err) => {
-    if (err) {
-      return cb(err.message);
-    }
-    return cb();
-  });
-}
-
-/**
- * get friend's public key from friend list
- */
 
 function get_frd_pubkey(frd_username, cb) {
   var frd_pubkey;
-  get_frds((err, frds) => {
-    if (err) {
-      return cb(err, null);
-    }
+  get_frds((er, frds) => {
+    if (er) return cb(er);
     frds.forEach((frd) => {
-      if (frd.pubkey && frd.name === frd_username) {
-        frd_pubkey = frd.pubkey;
+      if (frd.key && frd.name === frd_username) {
+        frd_pubkey = frd.key;
       }
     });
     return cb(null, frd_pubkey);
   });
 }
 
-/**
- * encrypt a given message with receiver's pubkey 
- * and return the cipher text
- */
-
-function encrypt(msg, receiver, cb) {
-  var msg_key, hmac_key, iv,
-    hmac, tag, keys_encrypted, cipher, cipher_text;
-
-  get_frd_pubkey(receiver, (err, rec_pubkey) => {
-    if (err) {
-      return cb(err, null);
+function create_msg_tok(enc_msg, receiver, cb) { 
+  async.waterfall([
+    function(callback) {
+      db.get('name', (er, usern) => {
+        if (er) return callback(er);
+        return callback(null, usern);
+      });
+    },
+    function(usern, callback) {
+      db.get('priv', (er, privkey) => {
+        if (er) return callback(er);
+        return callback(null, usern, privkey);
+      });
+    },
+    function(usern, privkey, callback) {
+      jwt.sign({
+        iat: new Date().getTime(),
+        exp: Math.floor(new Date().getTime()/1000) + 60*60,
+        iss: usern.toString(),
+        sub: receiver,
+        msg: enc_msg
+      }, privkey, {algorithm: 'RS256'}, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
+      });
     }
-    if (rec_pubkey) {
-      // we have receiver's pubkey, try to encrypt the message
-      try {
-        msg_key = crypto.randomBytes(32);
-        hmac_key = crypto.randomBytes(32);
-        iv = crypto.randomBytes(16); // 128 bits initialization vector
-        hmac = crypto.createHmac(hmac_alg, hmac_key);
-
-        // encrypt the message with random iv
-        cipher = crypto.createCipheriv(alg, msg_key, iv);
-        cipher_text = cipher.update(msg, 'utf8', encoding);
-        cipher_text += cipher.final(encoding);
-
-        // make sure both the cipher text and the iv are protected by hmac
-        hmac.update(cipher_text);
-        hmac.update(iv.toString(encoding));
-        tag = hmac.digest(encoding);
-
-        // encrypt concatenated msg and hmac keys with receiver's public key
-        keys_encrypted = crypto.publicEncrypt(rec_pubkey, Buffer.from(`${msg_key.toString(encoding)}&${hmac_key.toString(encoding)}`));
-        // concatenate keys, cipher text, iv and hmac digest
-        return cb(null, `${keys_encrypted.toString(encoding)}#${cipher_text}#${iv.toString(encoding)}#${tag}`);
-      } catch(err) {
-        return cb(err.message);
-      } 
-    } else {
-      return cb('friend\'s public key not found');
-    }
+  ], (er, tok) => {
+    if (er) return cb(er);
+    return cb(null, tok);
   });
 }
 
-/**
- * decrypt a given cipher text and return the derived plaintext
- */
-
-function decrypt(cipher_text, cb) {
-  var chunk, keys_encrypted, keys_dec, 
-    ct, iv, tag, msg_key, hmac_key, hmac,
-    computed_tag, decipher, decrypted;
-
-  db.get('priv', (err, privkey) => {
-    if (err) {
-      return cb(err.message);
-    }
-    try {
-      chunk = cipher_text.split('#');
-      keys_encrypted = Buffer.from(chunk[0], encoding);
-      ct = chunk[1];
-      iv = Buffer.from(chunk[2], encoding);
-      tag = chunk[3];
-      keys_dec = crypto.privateDecrypt(privkey, keys_encrypted).toString('utf8').split('&');
-      msg_key = Buffer.from(keys_dec[0], encoding);
-      hmac_key = Buffer.from(keys_dec[1], encoding);
-
-      hmac = crypto.createHmac(hmac_alg, hmac_key);
-      hmac.update(ct);
-      hmac.update(iv.toString(encoding));
-      computed_tag = hmac.digest(encoding);
-      if (computed_tag !== tag) {
-        return cb('invalid integrity tag');
-      }
-      decipher = crypto.createDecipheriv(alg, msg_key, iv);
-      decrypted = decipher.update(ct, encoding, 'utf8');
-      decrypted += decipher.final('utf8');
-      return cb(null, decrypted);
-    } catch(err) {
-      return cb(err.message);
-    }
-  });
-}
-
-/**
- * send encrypted message to the server
- */
-
-function send_msg(msg, receiver, cb) {
-  var d; 
-  encrypt(msg, receiver, (err, enc_dat) => {
-    if (err) {
-      return cb(err);
-    }
-    gen_msg_tok(enc_dat, receiver, (err, tok) => {
-      if (err) {
-        return cb(err);
-      }
-      req({url: uri.msg, form: {rec: receiver, tok: tok}}, (err) => {
-        if (err) {
-          return cb(err);
+function verify_msg_tok(frd, tok, cb) {
+  async.waterfall([
+    function(callback) {
+      db.get('name', (er, usern) => {
+        if (er) return callback(er);
+        return callback(null, usern);
+      });
+    },
+    function(usern, callback) {
+      get_frd_pubkey(frd, (er, frdkey) => {
+        if (er) return callback(er);
+        return callback(null, usern, frdkey);
+      });
+    },
+    function(usern, frdkey, callback) {
+      jwt.verify(tok, Buffer.from(frdkey, encod), {algorithms: ['RS256']}, (er, decod) => {
+        if (er) return callback(er);
+        if (decod.iss === frd && decod.sub === usern.toString() && decod.msg) {
+          return callback(null, decod);
         } else {
-          db.get('name', (err, un) => {
-            if (err) {
-              return cb(err.message);
-            }
-            d = new Date();
-            return cb(null, {un: un, time: `${d.getHours()}:${d.getMinutes()}`});
-          });
+          return callback(new Error('invalid message token'));
         }
       });
-    });
+    }
+  ], (er, decod) => {
+    if (er) return cb(er);
+    return cb(null, decod);
   });
 }
 
-/**
- * decrypt unread messages
- */
-
-function decrypt_unread(unread_msgs, cb) {    
-  var msgs = [];
-  async.each(unread_msgs, (unread, callback) => {
-    if (!unread.sen || !unread.tok || !unread.time) {
-      return callback('invalid message token');
-    } else {
-      verify_msg_tok(unread.sen, unread.tok, (err, decod) => {
-        if (err) {
-          return callback(err);
+function verify_frd_tok(frd_name, tok, sec, cb) {
+  async.waterfall([
+    function(callback) {
+      db.get('name', (er, usern) => {
+        if (er) return callback(er);
+        return callback(null, usern);
+      });
+    },
+    function(usern, callback) {
+      jwt.verify(tok, sec, {algorithms: ['HS256']}, (er, decod) => {
+        if (er) return callback(er);
+        if (decod.iss === frd_name && decod.sub === usern.toString() && decod.pub) {
+          return callback(null, decod);
+        } else {
+          return callback(new Error('invalid friend token'));
         }
-        decrypt(decod.msg, (err, decrypted) => {
-          if (err) {
-            return callback(err);
-          } else {
-            msgs.push({sen: unread.sen, msg: decrypted, time: unread.time});
-            return callback();
-          }
+      });
+    }
+  ], (er, decod) => {
+    if (er) return cb(er);
+    return cb(null, decod);
+  });
+}
+
+function verify_frd_req(frd, sec, cb) {
+  async.waterfall([
+    function(callback) {
+      db.get('frd_req', (er, buf) => {
+        var req;
+        if (er) return callback(er);
+        try {
+          req = JSON.parse(buf);
+        } catch(er) {
+          return callback(er);
+        }
+        return callback(null, req);
+      });
+    },
+    function(req, callback) {
+      if (!req.sen || !req.tok) {
+        return callback(new Error('invalid friend request'));
+      } else {
+        if (req.sen !== frd) {
+          return callback(new Error('invalid friend request'));
+        } else {
+          verify_frd_tok(req.sen, req.tok, sec, (er, decod) => {
+            if (er) return callback(er);
+            return callback(null, decod);
+          });
+        }
+      }
+    },
+    function(decod, callback) {      
+      add_frd(frd, decod.pub, (er) => {
+        if (er) return callback(er);
+        db.del('frd_req', (er) => {
+          if (er) return callback(er);
+          return callback();
         });
       });
     }
-  }, (err) => {
-    if (err) {
-      return cb(err);
-    } else {
-      return cb(null, msgs);
-    }
+  ], (er) => {
+    if (er) return cb(er);
+    return cb();
   });
 }
 
-/**
- * remove unread messages from server db
- */
+function send_frd_req(frd_un, sec, cb) {
+  async.waterfall([
+    function(callback) {
+      create_frd_tok(frd_un, sec, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
+      });
+    },
+    function(frd_tok, callback) {
+      create_dat_tok({rec: frd_un, tok: frd_tok}, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
+      });
+    },
+    function(tok, callback) {
+      req({url: uri.send_frd_req, form: {tok: tok}}, (er) => {
+        if (er) return callback(er);
+        return callback();
+      });
+    }
+  ], (er) => {
+    if (er) return cb(er);
+    return cb();
+  });
+}
 
-function clear_unread(cb) {
-  req({url: uri.clear_unread}, (err) => {
-    if (err) {
-      return cb(err);
+function send_frd_rej(frd, cb) {
+  async.waterfall([
+    function(callback) {
+      create_dat_tok({frd: frd}, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
+      });
+    },
+    function(tok, callback) {
+      req({url: uri.send_frd_rej, form: {tok: tok}}, (er) => {
+        if (er) return callback(er);
+        return callback();
+      });
+    }
+  ], (er) => {
+    if (er) return cb(er);
+    return cb();
+  });
+}
+
+function fetch_frd_req(cb) {
+  async.waterfall([
+    function(callback) {
+      req({url: uri.fetch_frd_req}, (er, res) => {
+        if (er) return callback(er);
+        return callback(null, res);
+      });
+    },
+    function(res, callback) {
+      if (res && res.frd_req && res.frd_req.tok) {
+        db.put('frd_req', Buffer.from(JSON.stringify(res.frd_req)), (er) => {
+          if (er) return callback(er);
+          return callback(null, res.frd_req.sen);
+        });
+      } else {
+        return callback();
+      }
+    }
+  ], (er, sen) => {
+    if (er) return cb(er);
+    return cb(null, sen);
+  });
+}
+
+function fetch_frd_rej(cb) {
+  req({url: uri.fetch_frd_rej}, (er, res) => {
+    if (er) return cb(er);
+    if (res && res.frd_rej) {
+      return cb(null, res.frd_rej);
     } else {
       return cb();
     }
   });
 }
 
-/**
- * request to get unread messages from server
- */
+function encrypt(dat, rec, cb) { 
+  async.waterfall([
+    function(callback) {
+      get_frd_pubkey(rec, (er, frdkey) => {
+        if (er) return callback(er);
+        return callback(null, frdkey);
+      });
+    },
+    function(frdkey, callback) {
+      var dat_key, hmac_key, iv, hmac, tag, keys_encrypted, cipher, cipher_dat;
+      try {
+        dat_key = crypto.randomBytes(32);
+        hmac_key = crypto.randomBytes(32);
+        iv = crypto.randomBytes(16);
+        hmac = crypto.createHmac(hmac_alg, hmac_key);
 
-function fetch_unread(cb) {
-  req({url: uri.unread}, (err, res) => {
-    if (err) {
-      return cb(err);
+        cipher = crypto.createCipheriv(alg, dat_key, iv);
+        cipher_dat = Buffer.concat([cipher.update(dat), cipher.final()]);
+        keys_encrypted = crypto.publicEncrypt(Buffer.from(frdkey, encod).toString(), Buffer.from(`${dat_key.toString(encod)}#${hmac_key.toString(encod)}`));
+
+        hmac.update(keys_encrypted);
+        hmac.update(cipher_dat);
+        hmac.update(iv);
+        tag = hmac.digest();
+        return callback(null, `${keys_encrypted.toString(encod)}#${cipher_dat.toString(encod)}#${iv.toString(encod)}#${tag.toString(encod)}`);
+      } catch(er) {
+        return callback(er);
+      }
     }
-    if (res.unread) {
-      decrypt_unread(res.unread, (err, msgs) => {
-        if (err) {
-          return cb(err);
+  ], (er, enc_dat) => {
+    if (er) return cb(er);
+    return cb(null, enc_dat);
+  });
+}
+
+function decrypt(cipher_chunk, cb) {
+  async.waterfall([
+    function(callback) {
+      db.get('priv', (er, privkey) => {
+        if (er) return callback(er);
+        return callback(null, privkey);
+      });
+    },
+    function(privkey, callback) {
+      var chunk, keys_encrypted, keys_dec, cdat, iv, tag, dat_key, hmac_key, hmac, computed_tag, decipher, decrypted;
+      try {
+        chunk = cipher_chunk.split('#');
+        keys_encrypted = Buffer.from(chunk[0], encod);
+        cdat = Buffer.from(chunk[1], encod);
+        iv = Buffer.from(chunk[2], encod);
+        tag = chunk[3];
+
+        keys_dec = crypto.privateDecrypt(privkey.toString().trim(), keys_encrypted).toString().split('#');
+        dat_key = Buffer.from(keys_dec[0], encod);
+        hmac_key = Buffer.from(keys_dec[1], encod);
+
+        hmac = crypto.createHmac(hmac_alg, hmac_key);
+        hmac.update(keys_encrypted);
+        hmac.update(cdat);
+        hmac.update(iv);
+        computed_tag = hmac.digest(encod);
+        if (computed_tag !== tag) {
+          return callback(new Error('invalid integrity tag'));
         } else {
-          clear_unread((err) => {
-            if (err) {
-              return cb(err);
-            }
-            return cb(null, msgs);
+          decipher = crypto.createDecipheriv(alg, dat_key, iv);
+          decrypted = Buffer.concat([decipher.update(cdat), decipher.final()]);
+          return callback(null, decrypted);
+        }
+      } catch(er) {
+        return callback(er);
+      }
+    }
+  ], (er, decrypted) => {
+    if (er) return cb(er);
+    return cb(null, decrypted) ;
+  });
+}
+
+function send_msg(msg, receiver, cb) {
+  async.waterfall([
+    function(callback) {        
+      encrypt(Buffer.from(msg), receiver, (er, enc_msg) => {
+        if (er) return callback(er);
+        return callback(null, enc_msg);
+      });
+    },
+    function(enc_msg, callback) {
+      create_msg_tok(Buffer.from(enc_msg).toString(encod), receiver, (er, tok) => {
+        if (er) return callback(er);
+        return callback(null, tok);
+      });
+    },
+    function(tok, callback) {
+      db.get('name', (er, usern) => {
+        if (er) return callback(er);
+        return callback(null, tok, usern);
+      });
+    },
+    function(tok, usern, callback) {
+      var d = new Date();
+      create_dat_tok({rec: receiver, tok: tok, time: `${d.getFullYear()}/${d.getMonth()}/${d.getDate()} ${d.getHours()}:${d.getMinutes()}`}, (er, token) => {
+        if (er) return callback(er);
+        return callback(null, usern, token);
+      });
+    },
+    function(usern, token, callback) {
+      var d = new Date();
+      req({url: uri.msg, form: {tok: token}}, (er) => {
+        if (er) return callback(er);
+        return callback(null, {sen: usern.toString(), msg: msg, time: `${d.getHours()}:${d.getMinutes()}`});
+      });
+    }
+  ], (er, msg) => {
+    if (er) return cb(er);
+    return cb(null, msg);
+  });
+}
+
+function decrypt_unread(unread_msgs, cb) {
+  var msgs = [];
+  async.each(unread_msgs, (unread, callback) => {
+    if (!unread.sen || !unread.tok || !unread.time) {
+      return callback(new Error('invalid message token'));
+    } else {
+      async.waterfall([
+        function(callb) {
+          verify_msg_tok(unread.sen, unread.tok, (er, decod) => {
+            if (er) return callb(er);
+            return callb(null, decod);
+          });
+        },
+        function(decod, callb) {
+          decrypt(Buffer.from(decod.msg, encod).toString(), (er, decrypted_msg) => {
+            if (er) return callb(er);
+            msgs.push({sen: unread.sen, msg: decrypted_msg.toString(), time: unread.time});
+            return callb();
           });
         }
+      ], (er) => {
+        if (er) return callback(er);
+        return callback();
       });
-    } else {
-      return cb();
     }
+  }, (er) => {
+    if (er) return cb(er);
+    return cb(null, msgs);
   });
 }
 
-/**
- * log out of current session, token is removed
- * from both server and local db
- */
+function fetch_unread(cb) {
+  async.waterfall([
+    function(callback) {
+      req({url: uri.unread}, (er, res) => {
+        if (er) return callback(er);
+        return callback(null, res);
+      });
+    },
+    function(res, callback) {
+      if (res.unread && res.unread.length > 0) {
+        decrypt_unread(res.unread, (er, msgs) => {
+          if (er) return callback(er);
+          return callback(null, msgs);
+        });
+      } else {
+        return callback();
+      }
+    }
+  ], (er, msgs) => {
+    if (er) return cb(er);
+    return cb(null, msgs);
+  });
+}
+
+function is_reg_user(cb) {
+  db.get('name', (er) => {
+    if (er) return cb(false);
+    return cb(true);
+  });
+}
 
 function logout(cb) {
-  req({url: uri.logout}, (err) => {
-    if (err) {
-      return cb(err);
-    } else {
-      db.del('tok', (err) => {
-        if (err) {
-          return cb();
-        }
-        return cb();
+  async.series([
+    function(callback) {
+      req({url: uri.logout}, (er) => {
+        if (er) return callback(er);
+        return callback();
+      });
+    },
+    function(callback) {
+      db.del('tok', () => {
+        return callback();
       });
     }
+  ], (er) => {
+    if (er) return cb(er);
+    return cb();
   });
 }
 
 module.exports = {
+  register: register,
   login: login,
   verify_frd_req: verify_frd_req,
   send_frd_req: send_frd_req,
@@ -771,7 +811,6 @@ module.exports = {
   get_frds: get_frds,
   send_msg: send_msg,
   fetch_unread: fetch_unread,
-  logout: logout,
-  get_frd_req: get_frd_req,
-  clear_frd_rej_loc: clear_frd_rej_loc,
+  is_reg_user: is_reg_user,
+  logout: logout
 };

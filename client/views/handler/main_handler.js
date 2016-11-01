@@ -9,11 +9,7 @@ var msg = document.getElementById('msg-inp');
 var send_btn = document.getElementById('send-btn');
 var msg_ul = document.getElementById('msg-list');
 var logout_btn = document.getElementById('logout-btn');
-var frd_req_btn = document.getElementById('frd-req-btn');
-
-/**
- * append a new friend to friend list
- */
+var scrol = document.getElementById('chat-scrol');
 
 function append_frd_list(frds) { 
   frds.forEach((frd) => {
@@ -22,18 +18,22 @@ function append_frd_list(frds) {
     frd_btn.appendChild(document.createTextNode(frd.name));
     frd_btn.addEventListener('click', (ev) => {
       ev.preventDefault();
-      receiver.value = frd.name;
+      if (frd_btn !== undefined && frd_btn.name === 'selected') {
+        frd_btn.name = 'unselected';
+        frd_btn.style.background = '#bfc6c8';
+        receiver.value = '';
+      } else {
+        frd_btn.name = 'selected';
+        frd_btn.style.background = '#96b8c8';
+        receiver.value = frd.name;
+      }
     });
     frd_ls.appendChild(frd_btn);
   });
   return;
 }
 
-/**
- * create a li for a message to show
- */
-
-function create_li_msg(username, msg, time, own) {
+function create_li_msg(dat, own) {
   var li = document.createElement('li');
   var lbl_div = document.createElement('div');
   var name_h = document.createElement('h5');
@@ -42,7 +42,7 @@ function create_li_msg(username, msg, time, own) {
   var msg_div = document.createElement('div');
   var msg_p = document.createElement('p');
   var time_p = document.createElement('p');
-  var time_icon = document.createElement('i');
+  var time_icon = document.createElement('span');
 
   li.className += 'mar-btm';
   if (own) {
@@ -56,28 +56,30 @@ function create_li_msg(username, msg, time, own) {
   }
   msg_div.className += 'speech';
   time_p.className += 'speech-time';
-  time_icon.className += 'fa fa-clock-o';
+  time_icon.className += 'glyphicon glyphicon-time';
 
-  lbl_span.appendChild(document.createTextNode(username));
+  lbl_span.appendChild(document.createTextNode(dat.sen));
   name_h.appendChild(lbl_span);
   lbl_div.appendChild(name_h);  
   li.appendChild(lbl_div);
-
-  msg_p.appendChild(document.createTextNode(msg));
-  time_icon.appendChild(document.createTextNode(` ${time}`));
-  time_p.appendChild(time_icon);
-
+  msg_p.appendChild(document.createTextNode(dat.msg));
   msg_div.appendChild(msg_p);
+
+  time_p.appendChild(time_icon);
+  time_p.appendChild(document.createTextNode(` ${dat.time} `));
+  time_p.appendChild(document.createTextNode(` \u2714`));
   msg_div.appendChild(time_p);
   body_div.appendChild(msg_div);
-
   li.appendChild(body_div);
   msg_ul.appendChild(li);
+  scrol.scrollTop = scrol.scrollHeight;
   return;
 }
 
+ipc.send('fetch-frd-req');
+ipc.send('fetch-frd-rej');
+
 ipc.send('frd-ls');
-// show friend list
 ipc.on('frd-ls-success', (ev, frds) => {
   if (frds) {
     append_frd_list(frds);
@@ -89,60 +91,30 @@ add_btn.addEventListener('click', (ev) => {
   ipc.send('load-sendfrd');
 });
 
-// send button click listener
 send_btn.addEventListener('click', (ev) => {
   ev.preventDefault();
-  if (receiver.value !== '' && receiver.value !== null && msg.value !== '' && msg.value !== null) {
+  if (receiver.value !== undefined && msg.value !== undefined && receiver.value !== '' && msg.value !== '') {
     ipc.send('send-msg', {msg: msg.value, receiver: receiver.value});
-  } else {
-    ipc.send('chat-err', 'Message and receiver cannot be null');
+  } else { 
+    ipc.send('main-err', 'null message/receiver. Click on one of your friends to assign a receiver');
   }
 });
 
 ipc.on('send-msg-success', (ev, dat) => {
-  if (dat.un && dat.msg && dat.time) {
-    create_li_msg(dat.un, dat.msg, dat.time, true);
+  if (prog) {
+    prog.style.display = 'none';
+  }
+  if (dat) {
+    create_li_msg(dat, true);
   }
 });
 
 ipc.send('fetch-unread');
 ipc.on('fetch-unread-success', (ev, msgs) => {
   msgs.forEach((unread) => {
-    if (unread.sen && unread.msg && unread.time) {
-      create_li_msg(unread.sen, unread.msg, unread.time, false);
-    }
+    create_li_msg(unread, false);
   });
 });
-
-ipc.send('fetch-frd-req');
-ipc.on('fetch-frd-req-success', () => {
-  frd_req_btn.appendChild(document.createTextNode('friend request'));
-  frd_req_btn.style.display = 'inline-block';
-  frd_req_btn.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    ipc.send('show-frd-req');
-    if (frd_req_btn !== null) {
-      frd_req_btn.style.display = 'none';
-    }
-  });
-});
-
-ipc.send('fetch-frd-rej');
-ipc.on('check-frd-rej-success', () => {
-  frd_req_btn.appendChild(document.createTextNode('friend reject'));
-  frd_req_btn.style.display = 'inline-block';
-  frd_req_btn.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    ipc.send('show-frd-rej');
-    if (frd_req_btn !== null) {
-      frd_req_btn.style.display = 'none';
-    }
-  });
-});
-
-/**
- * logout click listener
- */
 
 logout_btn.addEventListener('click', (ev) => {
   ev.preventDefault();

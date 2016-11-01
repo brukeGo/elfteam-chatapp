@@ -360,6 +360,7 @@ function create_frd_tok(frd_name, sec, cb) {
       });
     },
     //Function to create a hash of secret
+    //Brooke creates this
     function(usern, pubkey, callback) {
       jwt.sign({
         iat: new Date().getTime(),

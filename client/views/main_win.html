@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <title>elfocrypt - authenticated</title>
     <link rel="stylesheet" href="../resources/css/bootstrap.min.css">
-    <link rel="stylesheet" href="../resources/css/style-chat.css">
+    <link rel="stylesheet" href="../resources/css/style-main.css">
   </head>
   <body>
     <div class="container">
@@ -19,20 +19,19 @@
         </div>
       </div>
 
-      <div id="chat-pan" class="col-md-10 col-lg-6">
+      <div id="chat-pan" class="col-md-10 col-lg-8">
         <div class="panel">
           <!--Heading-->
           <div class="panel-heading">
             <div class="row">
               <div class="col-xs-4"><input id="receiver" type="text" placeholder="Receiver.." class="form-control chat-input" /></div>
-              <div><button id="logout-btn" type="button" class="btn btn-info">Log out</button></div>
-              <div><button id="frd-req-btn" type="button" class="btn btn-primary"></button></div>
-            </div>     
+              <div><button id="logout-btn" type="button" class="btn btn-info">Logout</button></div>
+            </div>
           </div>
           <!--chat body-->
           <div id="chat-body" class="chat-bg">
             <div class="nano has-scrollbar" style="height:400px">
-              <div class="nano-content pad-all" tabindex="0" style="right: -17px;">
+              <div id="chat-scrol" class="nano-content pad-all" tabindex="0" style="right: -17px;">
                 <ul id="msg-list" class="list-unstyled media-block">
                 </ul>
               </div>
@@ -52,10 +51,9 @@
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </div>
-    <script>require('./handler/chat.js')</script>
+    <script>require('./handler/main_handler.js')</script>
   </body>
 </html>

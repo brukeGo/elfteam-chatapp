@@ -1,0 +1,49 @@
+html, body {
+	background-color: #3b6c78;
+	text-align: center;
+}
+.form {
+	width: 300px;
+	margin-top: 100px;
+	margin-left: auto;
+	margin-right: auto;
+	text-align: center;
+}
+
+.form-control {
+	margin-bottom: 25px;
+	background-color: #dfe2e3;
+}
+.form-actions {
+	margin-top: 20px;
+	text-align: center;
+	font-weight: bold;
+}
+.table-striped {
+	border: 2px solid white;
+  border-radius: 4px;
+}
+.searchlink {
+	margin-bottom: 30px;
+	color: #1d272c;
+}
+#search-link {
+	color: #02232e;
+}
+#verify-btn {
+	margin-top: 10px;
+}
+.newu {
+	margin-top: 30px;
+	color: #1d272c;
+}
+a:hover {
+	cursor: pointer;
+}
+.acc {
+	margin-left: 4px;
+	color: #083443;
+}
+#login-btn {
+	width: 100px;
+}

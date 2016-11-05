@@ -7,7 +7,7 @@ const levelup = require('levelup');
 const crypto = require('crypto');
 const async = require('async');
 const encod = 'base64';
-
+const hmac_alg = 'sha256';
 // for testing and dev, load keys from package.json
 const jwtkey = require('./package.json').jwt_key;
 const hmac_key = require('./package.json').hmac_key;
@@ -16,7 +16,7 @@ const client_tag = require('./package.json').client_tag;
 var db = levelup(path.join(__dirname, '.db'), {valueEncoding: 'json'});
 
 function verify_client_tag(tag, cb) {  
-  const hmac = crypto.createHmac('sha256', hmackey);
+  const hmac = crypto.createHmac('sha256', hmac_key);
   var computed_tag;
   if (!tag) {
     return cb(new Error('invalid client tag'));

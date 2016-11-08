@@ -10,7 +10,6 @@ const async = require('async');
 const rm = require('rimraf');
 const mkdirp = require('mkdirp');
 const assign = require('deep-assign');
-const jwt = require('jsonwebtoken');
 const cache = path.join(__dirname, 'cache');
 const tmp = path.join(__dirname, 'tmp');
 const privkey_path = path.join(tmp, 'priv.pem');
@@ -32,7 +31,6 @@ const encod = 'base64';
 const alg = 'aes-256-cbc';
 const hmac_alg = 'sha256';
 const client_key = require(path.join(__dirname, 'package.json')).clientkey;
-const reg_key = require(path.join(__dirname, 'package.json')).regkey;
 var db = levelup(path.join(__dirname, '.db'), {valueEncoding: 'binary'});
 
 function gen_rsakey() {
@@ -69,87 +67,54 @@ function get_pubkey() {
   }
 }
 
-function create_reg_tok(dat, cb) {
-  async.waterfall([
-    function(callback) {
-      dat = assign(dat, {
-        iat: new Date().getTime(),
-        exp: Math.floor(new Date().getTime()/1000)+30,
-        iss: 'elfocrypt.me',
-        sub: 'elfocrypt-server'
-      });
-      return callback(null, dat);
-    },
-    function(dat, callback) {  
-      jwt.sign(dat, Buffer.from(reg_key, encod), {algorithm: 'RS256'}, (er, tok) => {
-        if (er) return callback(er);
-        return callback(null, tok);
-      });
-    }
-  ], (er, tok) => {
-    if (er) return cb(er);
-    return cb(null, tok);
-  });
-}
-
-function create_dat_tok(dat, cb) {
-  async.waterfall([
-    function(callback) {
-      db.get('name', (er, usern) => {
-        if (er) return callback(er);
-        return callback(null, usern);
-      });
-    },
-    function(usern, callback) {
-      db.get('privkey', (er, privkey) => {
-        if (er) return callback(er);
-        return callback(null, usern, privkey);
-      });
-    },
-    function(usern, privkey, callback) {
-      dat = assign(dat, {
-        iat: new Date().getTime(),
-        exp: Math.floor(new Date().getTime()/1000)+30,
-        iss: usern.toString(),
-        sub: 'elfocrypt-server'
-      });
-      jwt.sign(dat, privkey, {algorithm: 'RS256'}, (er, tok) => {
-        if (er) return callback(er);
-        return callback(null, tok);
-      });
-    }
-  ], (er, tok) => {
-    if (er) return cb(er);
-    return cb(null, tok);
-  });
-}
-
-function request_reg(url, tok, cb) {
+function request_reg(url, dat, cb) {
   var server_res;
-  request.post({url: url, headers: {authorization: client_key}, rejectUnauthorized: true, form: {tok: tok}}, (er, res, body) => {
+  request.post({url: url, headers: {authorization: client_key}, rejectUnauthorized: true, form: dat}, (er, res, body) => {
     if (er) return cb(er);
     try {
       server_res = JSON.parse(body);
     } catch(er) {
       return cb(er);
     }
-    if (server_res.err) return cb(server_res.err);
+    if (server_res.err) return cb(new Error(server_res.err));
     return cb(null, server_res);
   });
 }
 
-function register(usern, cb) {
+function encrypt_challenge(challenge, cb) {
   async.waterfall([
     function(callback) {
-      create_reg_tok({un: usern}, (er, tok) => {
+      db.get('privkey', (er, privkey) => {
         if (er) return callback(er);
-        return callback(null, tok);
-      });
+        return callback(null, privkey);
+      }); 
     },
-    function(tok, callback) {
-      request_reg(uri.init_reg, tok, (er, res) => {
+    function(privkey, callback) {
+      var enc_challenge, tag, hmac, hmac_key, enc_hmac_key;
+      try {
+        hmac_key = crypto.randomBytes(32);
+        hmac = crypto.createHmac(hmac_alg, hmac_key);
+        enc_challenge = crypto.privateEncrypt(privkey.toString(), Buffer.from(challenge, encod));
+        enc_hmac_key = crypto.privateEncrypt(privkey.toString(), hmac_key);
+        hmac.update(enc_challenge);
+        tag = hmac.digest();
+        return callback(null, `${enc_hmac_key.toString(encod)}&${tag.toString(encod)}&${enc_challenge.toString(encod)}`);
+      } catch(er) {
+        return callback(er);
+      }
+    }
+  ], (er, enc_dat) => {
+    if (er) return cb(er);
+    return cb(null, enc_dat);
+  });
+}
+
+function register(usern, cb) {
+  async.series([
+    function(callback) {
+      request_reg(uri.init_reg, {usern: usern}, (er, res) => {
         if (er) return callback(er);
-        if (res.init && res.init === 'ok') {
+        if (res.info && res.info === 'ok') {
           return callback();
         } else {
           return callback(new Error('no proper response received from the server'));
@@ -176,18 +141,9 @@ function register(usern, cb) {
       });
     },
     function(callback) {
-      create_reg_tok({
-        un: usern,
-        pub: get_pubkey().toString(encod)
-      }, (er, tok) => {
+      request_reg(uri.reg, {usern: usern, pub: get_pubkey().toString(encod)}, (er, res) => {
         if (er) return callback(er);
-        return callback(null, tok);
-      });
-    },
-    function(tok, callback) {
-      request_reg(uri.reg, tok, (er, res) => {
-        if (er) return callback(er);
-        if (res.reg && res.reg === 'ok') {
+        if (res.info && res.info === 'ok') {
           return callback();
         } else {
           return callback(new Error('no proper response received from the server'));
@@ -228,13 +184,7 @@ function register(usern, cb) {
 function login(usern, cb) {
   async.waterfall([
     function(callback) {
-      create_reg_tok({un: usern}, (er, tok) => {
-        if (er) return callback(er);
-        return callback(null, tok);
-      });
-    },
-    function(tok, callback) {
-      request_reg(uri.init_login, tok, (er, res) => {
+      request_reg(uri.init_login, {usern: usern}, (er, res) => {
         if (er) return callback(er);
         if (res.challenge) {
           return callback(null, res.challenge);
@@ -244,25 +194,13 @@ function login(usern, cb) {
       });
     },
     function(challenge, callback) {
-      var enc_challenge;
-      db.get('privkey', (er, privkey) => {
+      encrypt_challenge(challenge, (er, enc_challenge) => {
         if (er) return callback(er);
-        try {
-          enc_challenge = crypto.privateEncrypt(privkey.toString(), Buffer.from(challenge, encod));
-          return callback(null, enc_challenge.toString(encod));
-        } catch(er) {
-          return callback(er);
-        }
+        return callback(null, enc_challenge);
       });
     },
     function(enc_challenge, callback) {
-      create_reg_tok({un: usern, cha: enc_challenge}, (er, tok) => {
-        if (er) return callback(er);
-        return callback(null, tok);
-      });
-    },
-    function(tok, callback) {
-      request_reg(uri.login, tok, (er, res) => {
+      request_reg(uri.login, {usern: usern, challenge_back: enc_challenge}, (er, res) => {
         if (er) return callback(er);
         if (res.token) {
           return callback(null, res.token);
@@ -301,7 +239,7 @@ function req(opts, cb) {
         } catch(er) {
           return callback(er);
         }
-        if (server_res.err) return callback(server_res.err);
+        if (server_res.err) return callback(new Error(server_res.err));
         return callback(null, server_res);
       });
     }
@@ -345,41 +283,6 @@ function get_frds(cb) {
   });
 }
 
-function create_frd_tok(frd_name, sec, cb) {
-  async.waterfall([
-    function(callback) {
-      db.get('name', (er, usern) => {
-        if (er) return callback(er);
-        return callback(null, usern);
-      });
-    },
-    function(usern, callback) {
-      db.get('pub', (er, pubkey) => {
-        if (er) return callback(er);
-        return callback(null, usern, pubkey);
-      });
-    },
-    //Function to create a hash of secret
-    //Brooke creates this
-	//I THINK I FINALLY GOT IT WORKING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    function(usern, pubkey, callback) {
-      jwt.sign({
-        iat: new Date().getTime(),
-        exp: Math.floor(new Date().getTime()/1000) + 60*60,
-        iss: usern.toString(),
-        sub: frd_name,
-        pub: pubkey.toString(encod)
-      }, sec, {algorithm: 'HS256'}, (er, tok) => {
-        if (er) return callback(er);
-        return callback(null, tok);
-      });
-    }
-  ], (er, tok) => {
-    if (er) return cb(er);
-    return cb(null, tok);
-  });
-}
-
 function get_frd_pubkey(frd_username, cb) {
   var frd_pubkey;
   get_frds((er, frds) => {
@@ -390,92 +293,6 @@ function get_frd_pubkey(frd_username, cb) {
       }
     });
     return cb(null, frd_pubkey);
-  });
-}
-
-function create_msg_tok(enc_msg, receiver, cb) { 
-  async.waterfall([
-    function(callback) {
-      db.get('name', (er, usern) => {
-        if (er) return callback(er);
-        return callback(null, usern);
-      });
-    },
-    function(usern, callback) {
-      db.get('priv', (er, privkey) => {
-        if (er) return callback(er);
-        return callback(null, usern, privkey);
-      });
-    },
-    function(usern, privkey, callback) {
-      jwt.sign({
-        iat: new Date().getTime(),
-        exp: Math.floor(new Date().getTime()/1000) + 60*60,
-        iss: usern.toString(),
-        sub: receiver,
-        msg: enc_msg
-      }, privkey, {algorithm: 'RS256'}, (er, tok) => {
-        if (er) return callback(er);
-        return callback(null, tok);
-      });
-    }
-  ], (er, tok) => {
-    if (er) return cb(er);
-    return cb(null, tok);
-  });
-}
-
-function verify_msg_tok(frd, tok, cb) {
-  async.waterfall([
-    function(callback) {
-      db.get('name', (er, usern) => {
-        if (er) return callback(er);
-        return callback(null, usern);
-      });
-    },
-    function(usern, callback) {
-      get_frd_pubkey(frd, (er, frdkey) => {
-        if (er) return callback(er);
-        return callback(null, usern, frdkey);
-      });
-    },
-    function(usern, frdkey, callback) {
-      jwt.verify(tok, Buffer.from(frdkey, encod), {algorithms: ['RS256']}, (er, decod) => {
-        if (er) return callback(er);
-        if (decod.iss === frd && decod.sub === usern.toString() && decod.msg) {
-          return callback(null, decod);
-        } else {
-          return callback(new Error('invalid message token'));
-        }
-      });
-    }
-  ], (er, decod) => {
-    if (er) return cb(er);
-    return cb(null, decod);
-  });
-}
-
-function verify_frd_tok(frd_name, tok, sec, cb) {
-  async.waterfall([
-    function(callback) {
-      db.get('name', (er, usern) => {
-        if (er) return callback(er);
-        return callback(null, usern);
-      });
-    },
-    function(usern, callback) {
-      jwt.verify(tok, sec, {algorithms: ['HS256']}, (er, decod) => {
-        if (er) return callback(er);
-        if (decod.iss === frd_name && decod.sub === usern.toString() && decod.pub) {
-          return callback(null, decod);
-        } else {
-          return callback(new Error('invalid friend token'));
-        }
-      });
-    }
-  ], (er, decod) => {
-    if (er) return cb(er);
-    return cb(null, decod);
   });
 }
 
@@ -494,21 +311,39 @@ function verify_frd_req(frd, sec, cb) {
       });
     },
     function(req, callback) {
-      if (!req.sen || !req.tok) {
+      if (!req.sen || !req.pubtag) {
         return callback(new Error('invalid friend request'));
       } else {
         if (req.sen !== frd) {
           return callback(new Error('invalid friend request'));
         } else {
-          verify_frd_tok(req.sen, req.tok, sec, (er, decod) => {
-            if (er) return callback(er);
-            return callback(null, decod);
-          });
+          return callback(null, req);
         }
       }
     },
-    function(decod, callback) {      
-      add_frd(frd, decod.pub, (er) => {
+    function(req, callback) {
+      var chunk, frd_pubkey, hash, hmac, hmac_key, computed_tag, tag;
+      try {
+        hash = crypto.createHash('sha256');
+        hash.update(sec);
+        hmac_key = hash.digest();
+        hmac = crypto.createHmac(hmac_alg, hmac_key);
+        chunk = req.pubtag.split('&');
+        tag = Buffer.from(chunk[0], encod);
+        frd_pubkey = Buffer.from(chunk[1], encod);
+        hmac.update(frd_pubkey);
+        computed_tag = hmac.digest();
+        if (!crypto.timingSafeEqual(computed_tag, tag)) {
+          return callback(new Error('invalid signature'));
+        } else {
+          return callback(null, chunk[1]);
+        }
+      } catch(er) {
+        return callback(er);
+      }
+    },
+    function(frd_pubkey, callback) {
+      add_frd(frd, frd_pubkey, (er) => {
         if (er) return callback(er);
         db.del('frd_req', (er) => {
           if (er) return callback(er);
@@ -525,21 +360,39 @@ function verify_frd_req(frd, sec, cb) {
 function send_frd_req(frd_un, sec, cb) {
   async.waterfall([
     function(callback) {
-      create_frd_tok(frd_un, sec, (er, tok) => {
+      db.get('name', (er, usern) => {
         if (er) return callback(er);
-        return callback(null, tok);
+        return callback(null, usern);
       });
     },
-    function(frd_tok, callback) {
-      create_dat_tok({rec: frd_un, tok: frd_tok}, (er, tok) => {
+    function(usern, callback) {
+      db.get('pub', (er, pubkey) => {
         if (er) return callback(er);
-        return callback(null, tok);
+        return callback(null, usern, pubkey);
       });
     },
-    function(tok, callback) {
-      req({url: uri.send_frd_req, form: {tok: tok}}, (er) => {
+    function(usern, pubkey, callback) {
+      var hash, hmac, hmac_key, tag;
+      try {
+        hash = crypto.createHash('sha256');
+        hash.update(sec);
+        hmac_key = hash.digest();
+        hmac = crypto.createHmac(hmac_alg, hmac_key);
+        hmac.update(pubkey);
+        tag = hmac.digest();
+        return callback(null, `${tag.toString(encod)}&${pubkey.toString(encod)}`);
+      } catch(er) {
+        return callback(er);
+      }
+    },
+    function(pubtag, callback) {
+      req({url: uri.send_frd_req, form: {rec: frd_un, pubtag: pubtag}}, (er, res) => {
         if (er) return callback(er);
-        return callback();
+        if (res.info && res.info === 'ok') {
+          return callback();
+        } else {
+          return callback(new Error('no proper response received from the server'));
+        }
       });
     }
   ], (er) => {
@@ -548,23 +401,14 @@ function send_frd_req(frd_un, sec, cb) {
   });
 }
 
-function send_frd_rej(frd, cb) {
-  async.waterfall([
-    function(callback) {
-      create_dat_tok({frd: frd}, (er, tok) => {
-        if (er) return callback(er);
-        return callback(null, tok);
-      });
-    },
-    function(tok, callback) {
-      req({url: uri.send_frd_rej, form: {tok: tok}}, (er) => {
-        if (er) return callback(er);
-        return callback();
-      });
-    }
-  ], (er) => {
+function send_frd_rej(rec, cb) {    
+  req({url: uri.send_frd_rej, form: {rec: rec}}, (er, res) => {
     if (er) return cb(er);
-    return cb();
+    if (res.info && res.info === 'ok') {
+      return cb();
+    } else {
+      return cb(new Error('no proper response received from the server'));
+    }
   });
 }
 
@@ -577,7 +421,7 @@ function fetch_frd_req(cb) {
       });
     },
     function(res, callback) {
-      if (res && res.frd_req && res.frd_req.tok) {
+      if (res && res.frd_req && res.frd_req.sen && res.frd_req.pubtag) {
         db.put('frd_req', Buffer.from(JSON.stringify(res.frd_req)), (er) => {
           if (er) return callback(er);
           return callback(null, res.frd_req.sen);
@@ -690,29 +534,20 @@ function send_msg(msg, receiver, cb) {
       });
     },
     function(enc_msg, callback) {
-      create_msg_tok(Buffer.from(enc_msg).toString(encod), receiver, (er, tok) => {
-        if (er) return callback(er);
-        return callback(null, tok);
-      });
-    },
-    function(tok, callback) {
       db.get('name', (er, usern) => {
         if (er) return callback(er);
-        return callback(null, tok, usern);
+        return callback(null, enc_msg, usern);
       });
     },
-    function(tok, usern, callback) {
+    function(enc_msg, usern, callback) {
       var d = new Date();
-      create_dat_tok({rec: receiver, tok: tok, time: `${d.getFullYear()}/${d.getMonth()}/${d.getDate()} ${d.getHours()}:${d.getMinutes()}`}, (er, token) => {
+      req({url: uri.msg, form: {rec: receiver, msg: enc_msg, time: `${d.getFullYear()}/${d.getMonth()}/${d.getDate()} ${d.getHours()}:${d.getMinutes()}`}}, (er, res) => {
         if (er) return callback(er);
-        return callback(null, usern, token);
-      });
-    },
-    function(usern, token, callback) {
-      var d = new Date();
-      req({url: uri.msg, form: {tok: token}}, (er) => {
-        if (er) return callback(er);
-        return callback(null, {sen: usern.toString(), msg: msg, time: `${d.getHours()}:${d.getMinutes()}`});
+        if (res.info && res.info === 'ok') {
+          return callback(null, {sen: usern.toString(), msg: msg, time: `${d.getHours()}:${d.getMinutes()}`});
+        } else {
+          return callback(new Error('no proper response received from the server'));
+        }
       });
     }
   ], (er, msg) => {
@@ -724,27 +559,14 @@ function send_msg(msg, receiver, cb) {
 function decrypt_unread(unread_msgs, cb) {
   var msgs = [];
   async.each(unread_msgs, (unread, callback) => {
-    if (!unread.sen || !unread.tok || !unread.time) {
+    if (!unread.sen || !unread.msg || !unread.time) {
       return callback(new Error('invalid message token'));
-    } else {
-      async.waterfall([
-        function(callb) {
-          verify_msg_tok(unread.sen, unread.tok, (er, decod) => {
-            if (er) return callb(er);
-            return callb(null, decod);
-          });
-        },
-        function(decod, callb) {
-          decrypt(Buffer.from(decod.msg, encod).toString(), (er, decrypted_msg) => {
-            if (er) return callb(er);
-            msgs.push({sen: unread.sen, msg: decrypted_msg.toString(), time: unread.time});
-            return callb();
-          });
-        }
-      ], (er) => {
+    } else {    
+      decrypt(Buffer.from(unread.msg, encod).toString(), (er, decrypted_msg) => {
         if (er) return callback(er);
+        msgs.push({sen: unread.sen, msg: decrypted_msg.toString(), time: unread.time});
         return callback();
-      });
+      }); 
     }
   }, (er) => {
     if (er) return cb(er);

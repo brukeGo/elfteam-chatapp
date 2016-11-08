@@ -22,6 +22,7 @@ var frd_rej_timer;
 var unread_timer;
 
 function showerr(er) {
+  console.log(er);
   dialog.showMessageBox({
     type: 'error',
     title: 'elfocrypt error',
@@ -238,7 +239,7 @@ ipcMain.on('fetch-frd-req', () => {
       var ans;
       if (er) {
         showerr(er);
-        main_win.reload();
+        app.quit();
       }
       if (sen) {
         ans = dialog.showMessageBox({
@@ -285,7 +286,7 @@ ipcMain.on('fetch-frd-rej', () => {
     auth.fetch_frd_rej((er, rej) => {
       if (er) {
         showerr(er);
-        main_win.reload();
+        app.quit();
       }
       if (rej) {
         showinfo(`${rej} rejected your friend request`);
@@ -331,7 +332,7 @@ ipcMain.on('fetch-unread', (ev) => {
     auth.fetch_unread((er, unread) => {
       if (er) {
         showerr(er);
-        main_win.reload();
+        app.quit();
       }
       if (unread) {    
         ev.sender.send('fetch-unread-success', unread);

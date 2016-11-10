@@ -231,7 +231,7 @@ function req(opts, cb) {
     },
     function(tok, callback) {
       var server_res;
-      opts = assign(opts, {headers: {authorization: Buffer.from(tok).toString().trim()}, rejectUnauthorized: true});
+      opts = assign(opts, {headers: {authorization: Buffer.from(tok).toString()}, rejectUnauthorized: true});
       request.post(opts, (er, res, body) => {
         if (er) return callback(er);
         try {
@@ -329,11 +329,11 @@ function verify_frd_req(frd, sec, cb) {
         hmac_key = hash.digest();
         hmac = crypto.createHmac(hmac_alg, hmac_key);
         chunk = req.pubtag.split('&');
-        tag = Buffer.from(chunk[0], encod);
+        tag = chunk[0];
         frd_pubkey = Buffer.from(chunk[1], encod);
         hmac.update(frd_pubkey);
-        computed_tag = hmac.digest();
-        if (!crypto.timingSafeEqual(computed_tag, tag)) {
+        computed_tag = hmac.digest(encod);
+        if (computed_tag !== tag) {
           return callback(new Error('invalid signature'));
         } else {
           return callback(null, chunk[1]);
@@ -465,13 +465,13 @@ function encrypt(dat, rec, cb) {
 
         cipher = crypto.createCipheriv(alg, dat_key, iv);
         cipher_dat = Buffer.concat([cipher.update(dat), cipher.final()]);
-        keys_encrypted = crypto.publicEncrypt(Buffer.from(frdkey, encod).toString(), Buffer.from(`${dat_key.toString(encod)}#${hmac_key.toString(encod)}`));
+        keys_encrypted = crypto.publicEncrypt(Buffer.from(frdkey, encod).toString(), Buffer.from(`${dat_key.toString(encod)}&${hmac_key.toString(encod)}`));
 
         hmac.update(keys_encrypted);
         hmac.update(cipher_dat);
         hmac.update(iv);
         tag = hmac.digest();
-        return callback(null, `${keys_encrypted.toString(encod)}#${cipher_dat.toString(encod)}#${iv.toString(encod)}#${tag.toString(encod)}`);
+        return callback(null, `${keys_encrypted.toString(encod)}&${cipher_dat.toString(encod)}&${iv.toString(encod)}&${tag.toString(encod)}`);
       } catch(er) {
         return callback(er);
       }
@@ -493,13 +493,14 @@ function decrypt(cipher_chunk, cb) {
     function(privkey, callback) {
       var chunk, keys_encrypted, keys_dec, cdat, iv, tag, dat_key, hmac_key, hmac, computed_tag, decipher, decrypted;
       try {
-        chunk = cipher_chunk.split('#');
+        chunk = cipher_chunk.split('&');
+        //console.log('cunk1:' + Buffer.from(chunk[1], encod))
         keys_encrypted = Buffer.from(chunk[0], encod);
         cdat = Buffer.from(chunk[1], encod);
         iv = Buffer.from(chunk[2], encod);
         tag = chunk[3];
 
-        keys_dec = crypto.privateDecrypt(privkey.toString().trim(), keys_encrypted).toString().split('#');
+        keys_dec = crypto.privateDecrypt(privkey.toString(), keys_encrypted).toString().split('&');
         dat_key = Buffer.from(keys_dec[0], encod);
         hmac_key = Buffer.from(keys_dec[1], encod);
 
@@ -559,14 +560,14 @@ function send_msg(msg, receiver, cb) {
 function decrypt_unread(unread_msgs, cb) {
   var msgs = [];
   async.each(unread_msgs, (unread, callback) => {
-    if (!unread.sen || !unread.msg || !unread.time) {
-      return callback(new Error('invalid message token'));
-    } else {    
-      decrypt(Buffer.from(unread.msg, encod).toString(), (er, decrypted_msg) => {
+    if (unread.sen && unread.msg && unread.time) {
+      decrypt(Buffer.from(unread.msg).toString(), (er, decrypted_msg) => {
         if (er) return callback(er);
         msgs.push({sen: unread.sen, msg: decrypted_msg.toString(), time: unread.time});
         return callback();
       }); 
+    } else {
+      return callback(new Error('invalid message token'));
     }
   }, (er) => {
     if (er) return cb(er);
@@ -583,7 +584,7 @@ function fetch_unread(cb) {
       });
     },
     function(res, callback) {
-      if (res.unread && res.unread.length > 0) {
+      if (res && res.unread && res.unread.length > 0) {
         decrypt_unread(res.unread, (er, msgs) => {
           if (er) return callback(er);
           return callback(null, msgs);

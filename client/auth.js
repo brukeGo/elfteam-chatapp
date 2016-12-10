@@ -61,8 +61,7 @@ function _encrypt_challenge(challenge, cb) {
         return callback(null, privkey);
       }); 
     },
-
-//Fixed
+    
 function(privkey, callback) {
       var enc_challenge, tag, hmac, hmac_key, enc_hmac_key;
       try {

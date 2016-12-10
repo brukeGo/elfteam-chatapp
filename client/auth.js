@@ -55,15 +55,63 @@ function _encrypt_challenge(challenge, cb) {
       }); 
     },
 
+//Guys I had issues with this section, can you take a look at it
+/*function(privkey, callback) {
+      var enc_challenge, tag, hmac, enc_hmac;
+      try {
+        hmac_key = crypto.randomBytes(32);
+        hmac = crypto.createHmac(hmac_alg, hmac_key);
+        enc_challenge = crypto.privateEncrypt(privkey, Buffer.from(challenge, encod));
+        enc_hmac = crypto.privateEncrypt(privkey, hmac);
+        hmac.update(enc_challenge);
+        tag = hmac.digest();
+        return callback(null, `${enc_hmac.toString(encod)}&${tag.toString(encod)}&${enc_challenge.toString(encod)}`);
+      } catch(er) {
+        return callback(er);
+      }
+    }
+  ], (er, enc_dat) => {
+    if (er) return cb(er);
+    return cb(null, enc_dat);
+  });
+}*/
+
+function register(usern, cb) {
+  async.waterfall([
+    function(callback) {
+      _request_reg(uri.init_reg, {usern: usern}, (er, res) => {
+        if (er) return callback(er);
+        if (res.info && res.info === 'ok') {
+          return callback();
+        } else {
+          return callback(new Error('no proper response received from the server'));
+        }
+      });
+    },
+
+function(callback) {
+      var rsa = gen_rsakey();
+      db.put('privkey', rsa.private, (er) => {
+        if (er) return callback(er);
+        return callback(null, rsa.public);
+      });
+    },
 
 
 
-
-
-
-
-
-
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 function compute_pubkey() {
   try {
     exec(`openssl rsa -in ${privkey_path} -out ${pubkey_path} -outform PEM -pubout`, {stdio: [0, 'pipe']});

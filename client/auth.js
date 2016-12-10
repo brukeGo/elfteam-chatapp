@@ -139,21 +139,26 @@ function(pubkey, callback) {
     return cb();
   });
 }
-
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+function(userkeys, callback) {
+      var frds = [];
+      var groups = [];
+      db.batch()
+        .put('name', usern)
+        .put('priv', userkeys.private)
+        .put('pub', userkeys.public)
+        .put('frds', JSON.stringify(frds))
+        .put('groups', JSON.stringify(groups))
+        .write((er) => {
+          if (er) return callback(er);
+          console.log(`${usern} saved to local db successfully`);
+          return callback();
+        });
+    }
+  ], (er) => {
+    if (er) return cb(er);
+    return cb();
+  });
+}
 function login(usern, cb) {
   async.waterfall([
     function(callback) {

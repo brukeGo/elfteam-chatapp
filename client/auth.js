@@ -46,6 +46,24 @@ function _request_reg(url, dat, cb) {
   });
 }
 
+function _encrypt_challenge(challenge, cb) {
+  async.waterfall([
+    function(callback) {
+      db.get('privkey', (er, privkey) => {
+        if (er) return callback(er);
+        return callback(null, privkey);
+      }); 
+    },
+
+
+
+
+
+
+
+
+
+
 function compute_pubkey() {
   try {
     exec(`openssl rsa -in ${privkey_path} -out ${pubkey_path} -outform PEM -pubout`, {stdio: [0, 'pipe']});

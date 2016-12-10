@@ -33,13 +33,17 @@ const hmac_alg = 'sha256';
 const client_key = require(path.join(__dirname, 'package.json')).clientkey;
 var db = levelup(path.join(__dirname, '.db'), {valueEncoding: 'binary'});
 
-function gen_rsakey() {
-  try {
-    exec(`openssl genrsa -out ${privkey_path} 2048`, {stdio: [0, 'pipe']});
-  } catch(er) {
-    throw er;
-  }
-  return;
+function _request_reg(url, dat, cb) {
+  var server_res;
+  request.post({url: url, headers: {authorization: client_key}, rejectUnauthorized: true, form: dat}, (er, res, body) => {
+    try {
+      server_res = JSON.parse(body);
+    } catch(er) {
+      console.log(er);
+      return cb(er);
+    }
+    return cb(null, server_res);
+  });
 }
 
 function compute_pubkey() {

@@ -2,18 +2,11 @@
 
 const path = require('path');
 const crypto = require('crypto');
-const fs = require('fs');
-const exec = require('child_process').execSync;
 const request = require('request');
 const levelup = require('levelup');
 const async = require('async');
-const rm = require('rimraf');
-const mkdirp = require('mkdirp');
+const gen_rsakey = require('keypair');
 const assign = require('deep-assign');
-const cache = path.join(__dirname, 'cache');
-const tmp = path.join(__dirname, 'tmp');
-const privkey_path = path.join(tmp, 'priv.pem');
-const pubkey_path = path.join(tmp, 'pub.pem');
 const uri = {
   init_reg: 'https://elfocrypt.me/init_reg',
   reg: 'https://elfocrypt.me/reg',
@@ -24,8 +17,14 @@ const uri = {
   fetch_frd_req: 'https://elfocrypt.me/fetch_frd_req',
   fetch_frd_rej: 'https://elfocrypt.me/fetch_frd_rej',
   msg: 'https://elfocrypt.me/msg',
+  g_msg: 'https://elfocrypt.me/g_msg',
   unread: 'https://elfocrypt.me/unread',
-  logout: 'https://elfocrypt.me/logout'
+  check_gchat: 'https://elfocrypt.me/check_gchat',
+  create_gchat: 'https://elfocrypt.me/create_gchat',
+  del_gchat: 'https://elfocrypt.me/del_gchat',
+  fetch_gchat_req: 'https://elfocrypt.me/fetch_gchat_req',
+  fetch_gchat_rej: 'https://elfocrypt.me/fetch_gchat_rej',
+  fetch_gchat_del: 'https://elfocrypt.me/fetch_gchat_del',
 };
 const encod = 'base64';
 const alg = 'aes-256-cbc';
@@ -703,10 +702,17 @@ module.exports = {
   send_frd_rej: send_frd_rej,
   fetch_frd_req: fetch_frd_req,
   fetch_frd_rej: fetch_frd_rej,
-  add_frd: add_frd,
   get_frds: get_frds,
   send_msg: send_msg,
   fetch_unread: fetch_unread,
   is_reg_user: is_reg_user,
-  logout: logout
+  create_gchat: create_gchat,
+  fetch_gchat_del: fetch_gchat_del,
+  fetch_gchat_req: fetch_gchat_req,
+  fetch_gchat_rej: fetch_gchat_rej,
+  send_gchat_rej: send_gchat_rej,
+  verify_gchat_req: verify_gchat_req,
+  is_group_admin: is_group_admin,
+  get_gmembers: get_gmembers,
+  rm_group: rm_group
 };

@@ -631,10 +631,17 @@ module.exports = {
   send_frd_rej: send_frd_rej,
   fetch_frd_req: fetch_frd_req,
   fetch_frd_rej: fetch_frd_rej,
-  add_frd: add_frd,
   get_frds: get_frds,
   send_msg: send_msg,
   fetch_unread: fetch_unread,
   is_reg_user: is_reg_user,
-  logout: logout
+  create_gchat: create_gchat,
+  fetch_gchat_del: fetch_gchat_del,
+  fetch_gchat_req: fetch_gchat_req,
+  fetch_gchat_rej: fetch_gchat_rej,
+  send_gchat_rej: send_gchat_rej,
+  verify_gchat_req: verify_gchat_req,
+  is_group_admin: is_group_admin,
+  get_gmembers: get_gmembers,
+  rm_group: rm_group
 };
